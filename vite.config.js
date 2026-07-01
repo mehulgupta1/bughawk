@@ -31,5 +31,6 @@ function jsProxyPlugin() {
 }
 
 export default defineConfig({
+  base: '/bughawk/',
   plugins: [react(), jsProxyPlugin()],
 });
