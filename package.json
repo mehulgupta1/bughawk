@@ -1,0 +1,30 @@
+{
+  "name": "bughawk",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite build && node server.mjs",
+    "start": "node server.mjs",
+    "lint": "eslint src",
+    "test": "node --test src/components/UrlParser/*.test.js src/lib/*.test.js"
+  },
+  "dependencies": {
+    "acorn": "^8.17.0",
+    "acorn-walk": "^8.3.5",
+    "idb": "^8.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "^10.5.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,19 @@
+# DIFF TEST — step 2: import this AFTER saving the baseline session, then click 🔀 Diff.
+# Expected vs baseline:
+#   shop.example.com   6379 OPENED, 8080 OPENED, 443 CHANGED (nginx 1.18.0 -> 1.25.3)
+#   db-cluster         11211 OPENED, 3306 same (no change)
+Nmap scan report for shop.example.com (93.184.216.34)
+Host is up.
+PORT     STATE SERVICE  VERSION
+22/tcp   open  ssh      OpenSSH 7.2p2
+80/tcp   open  http     Apache httpd 2.4.7
+443/tcp  open  https    nginx 1.25.3
+6379/tcp open  redis    Redis key-value store 5.0.7
+8080/tcp open  http-proxy Apache Tomcat 9.0.30
+
+Nmap scan report for db-cluster.example.com (10.0.0.50)
+Host is up.
+PORT      STATE SERVICE   VERSION
+22/tcp    open  ssh       OpenSSH 8.2
+3306/tcp  open  mysql     MySQL 5.7.30
+11211/tcp open  memcached Memcached 1.5.6

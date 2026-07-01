@@ -1,0 +1,73 @@
+/* recon.css — Dashboard "Recon Overview" cross-tab snapshot */
+
+.recon-overview {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.recon-card { padding: 16px; }
+.recon-card.clickable { cursor: pointer; transition: transform 0.12s ease, border-color 0.12s ease; }
+.recon-card.clickable:hover { transform: translateY(-2px); border-color: var(--border-active); }
+.recon-card.is-empty { opacity: 0.7; }
+.recon-empty { font-size: 13px; color: var(--text3); padding: 18px 0; }
+
+/* attack-surface gauge */
+.recon-gauge-card { grid-row: span 1; }
+.gauge-wrap { display: flex; align-items: center; gap: 18px; }
+.gauge { width: 120px; height: 120px; flex-shrink: 0; }
+.gauge-track { fill: none; stroke: var(--surface-hover); stroke-width: 10; }
+.gauge-fill {
+  fill: none; stroke-width: 10; stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.4s ease;
+}
+.gauge-num { font-size: 30px; font-weight: 800; fill: var(--text); text-anchor: middle; font-family: var(--font-mono, monospace); }
+.gauge-sub { font-size: 11px; fill: var(--text3); text-anchor: middle; }
+.gauge-meta { display: flex; flex-direction: column; gap: 6px; }
+.gauge-band { font-weight: 700; font-size: 15px; }
+.gauge-band.sev-critical { color: var(--sev-critical); }
+.gauge-band.sev-high { color: var(--sev-high); }
+.gauge-band.sev-medium { color: var(--sev-medium); }
+.gauge-band.sev-low { color: var(--sev-low); }
+.gauge-band.sev-info { color: var(--sev-info); }
+.gauge-line { font-size: 13px; color: var(--text2); }
+.gauge-sevs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+
+/* scope coverage bar */
+.cov-bar { display: flex; height: 14px; border-radius: 8px; overflow: hidden; background: var(--surface-hover); margin: 8px 0 10px; }
+.cov-seg { display: block; }
+.cov-seg.cov-in, .dot.cov-in { background: var(--scope-in, #10b981); }
+.cov-seg.cov-unknown, .dot.cov-unknown { background: var(--scope-unknown, #f59e0b); }
+.cov-seg.cov-out, .dot.cov-out { background: var(--scope-out, #ef4444); }
+.cov-legend { display: flex; gap: 16px; font-size: 12px; color: var(--text2); }
+.cov-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+.cov-gap { margin-top: 10px; font-size: 12px; color: var(--scope-unknown, #f59e0b); }
+
+/* tiles */
+.recon-tiles { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.recon-tile {
+  border: 1px solid var(--border); border-radius: 12px; padding: 14px 12px;
+  background: var(--surface); border-top: 3px solid var(--tile-accent);
+  transition: transform 0.12s ease;
+}
+.recon-tile.clickable { cursor: pointer; }
+.recon-tile.clickable:hover { transform: translateY(-2px); }
+.recon-tile-num { font-size: 24px; font-weight: 800; color: var(--tile-accent); line-height: 1; }
+.recon-tile-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text2); margin-top: 6px; }
+.recon-tile-hint { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+/* top risky hosts */
+.recon-top { grid-column: 1 / -1; }
+.top-host-row { display: flex; align-items: center; gap: 12px; padding: 5px 0; font-size: 13px; }
+.top-host-name { flex: 0 0 40%; word-break: break-all; }
+.top-host-ports { flex: 0 0 70px; color: var(--text2); font-size: 12px; }
+.top-host-bar { flex: 1; height: 8px; border-radius: 6px; background: var(--surface-hover); overflow: hidden; }
+.top-host-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--sev-medium), var(--sev-critical)); }
+
+/* unified activity feed icon */
+.activity-icon { flex-shrink: 0; width: 22px; text-align: center; font-size: 14px; }
+
+@media (max-width: 900px) {
+  .recon-overview { grid-template-columns: 1fr; }
+  .recon-tiles { grid-template-columns: repeat(3, 1fr); }
+}

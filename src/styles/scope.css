@@ -1,0 +1,84 @@
+/* scope.css — Scope tab + in/out/unknown badges shared across tabs */
+
+:root {
+  --scope-in: #10b981;
+  --scope-out: #ef4444;
+  --scope-unknown: #f59e0b;
+}
+
+/* shared badge */
+.scope-badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+  padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border);
+}
+.scope-badge.sm { font-size: 10px; padding: 1px 7px; }
+.scope-badge.in { color: var(--scope-in); border-color: var(--scope-in); background: rgba(16,185,129,0.12); }
+.scope-badge.out { color: var(--scope-out); border-color: var(--scope-out); background: rgba(239,68,68,0.12); }
+.scope-badge.unknown { color: var(--scope-unknown); border-color: var(--scope-unknown); background: rgba(245,158,11,0.12); }
+
+/* coverage cards */
+.scope-cov-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.scope-cov-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--surface); }
+.scope-cov-num { font-size: 26px; font-weight: 800; line-height: 1; }
+.scope-cov-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text2); margin-top: 6px; }
+.cov-in { border-left: 3px solid var(--scope-in); }
+.cov-out { border-left: 3px solid var(--scope-out); }
+.cov-unknown { border-left: 3px solid var(--scope-unknown); }
+.cov-total { border-left: 3px solid var(--accent-primary); }
+
+/* checker */
+.scope-check-card { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.scope-check-label { font-size: 13px; font-weight: 600; }
+.scope-check-input { flex: 1; min-width: 220px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); font-size: 13px; }
+
+/* add + import row */
+.scope-add-card { display: flex; align-items: center; gap: 8px; padding: 12px 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.scope-add-input { flex: 1; min-width: 240px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); font-size: 13px; }
+.scope-paste-card { padding: 12px 16px; margin-bottom: 12px; }
+.scope-paste-preview { font-size: 13px; color: var(--text2); margin: 8px 0; }
+
+/* CIDR helper */
+.scope-cidr-card { display: flex; align-items: center; gap: 8px; padding: 12px 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.cidr-info { font-size: 13px; color: var(--text2); }
+.cidr-info b { color: var(--text); }
+.cidr-info.bad { color: var(--scope-out); }
+.cidr-info.hint { color: var(--text3); }
+
+/* scope diff modal extras */
+.scope-flip-banner { font-size: 13px; padding: 8px 10px; background: var(--surface); border-radius: 8px; margin-bottom: 10px; }
+.flip-in { color: var(--scope-in); }
+.flip-out { color: var(--scope-out); }
+.flip-arrow { color: var(--text3); }
+.diff-opened { color: var(--scope-in); }
+.diff-closed { color: var(--scope-out); }
+.diff-changed { color: var(--scope-unknown); }
+
+/* rule lists */
+.scope-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.scope-rule-list { padding: 10px 12px; }
+.scope-rule-head { font-weight: 700; font-size: 13px; padding: 4px 4px 10px; display: flex; align-items: center; gap: 8px; }
+.scope-rule-head.in { color: var(--scope-in); }
+.scope-rule-head.out { color: var(--scope-out); }
+.scope-rule-count { font-size: 11px; color: var(--text2); background: var(--surface); padding: 1px 8px; border-radius: 999px; }
+.scope-rule-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-top: 1px solid var(--border-subtle); font-size: 13px; }
+.scope-kind { font-size: 10px; text-transform: uppercase; padding: 1px 6px; border-radius: 5px; background: var(--surface); color: var(--text2); border: 1px solid var(--border); min-width: 60px; text-align: center; }
+.kind-cidr { color: #60a5fa; }
+.kind-wildcard { color: var(--accent-primary-bright); }
+.kind-regex { color: var(--scope-unknown); }
+.scope-pattern { font-weight: 600; }
+.scope-note { font-size: 12px; color: var(--text2); }
+
+/* coverage gap */
+.scope-gap-card { padding: 12px 16px; }
+.scope-gap-head { font-weight: 700; font-size: 14px; color: var(--scope-unknown); margin-bottom: 10px; }
+.scope-gap-sub { font-weight: 400; font-size: 12px; color: var(--text2); margin-left: 6px; }
+.scope-gap-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; }
+.scope-gap-item { font-size: 12px; padding: 2px 8px; border-radius: 6px; border: 1px dashed var(--border); cursor: pointer; }
+.scope-gap-item:hover { border-color: var(--scope-unknown); color: var(--scope-unknown); }
+.scope-gap-more { font-size: 12px; color: var(--text3); padding: 2px 8px; }
+
+@media (max-width: 720px) {
+  .scope-cov-row { grid-template-columns: 1fr 1fr; }
+  .scope-lists { grid-template-columns: 1fr; }
+}

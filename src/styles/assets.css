@@ -1,0 +1,44 @@
+/* assets.css — the Assets storage vault tab */
+
+.asset-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.asset-tab {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  color: var(--text2); cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.asset-tab:hover { background: var(--surface-hover); }
+.asset-tab.active { color: var(--text); border-color: var(--accent-primary); background: var(--accent-primary-dim); }
+.asset-tab-count { font-size: 11px; background: var(--bg-surface); padding: 1px 8px; border-radius: 999px; color: var(--text2); }
+
+.asset-count { font-size: 12px; color: var(--text2); }
+
+.asset-list { padding: 4px 0; max-height: 60vh; overflow-y: auto; }
+.asset-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 14px;
+  border-bottom: 1px solid var(--border-subtle); font-size: 13px;
+}
+.asset-row:hover { background: var(--surface-hover); }
+.asset-row.is-new { background: rgba(16,185,129,0.06); }
+.asset-val { word-break: break-all; }
+.asset-new-tag { font-size: 10px; color: var(--status-2xx); border: 1px solid var(--status-2xx); border-radius: 6px; padding: 0 6px; }
+.asset-more { padding: 10px 14px; font-size: 12px; color: var(--text3); }
+
+/* head + smart import */
+.asset-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.asset-head-actions { display: flex; gap: 8px; }
+.smart-import { border: 1px dashed var(--accent-primary); }
+.smart-import-head { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+.asset-src-input { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); font-size: 12px; width: 200px; }
+
+/* toolbar */
+.asset-toolbar { flex-wrap: wrap; gap: 8px; }
+
+/* row tags */
+.asset-row { gap: 8px; }
+.asset-row .row-cb { flex-shrink: 0; }
+.asset-row.is-dead .asset-val { text-decoration: line-through; color: var(--text3); }
+.asset-dead-tag { font-size: 10px; color: var(--status-5xx); border: 1px solid var(--status-5xx); border-radius: 6px; padding: 0 6px; }
+.asset-src-tag { font-size: 10px; color: var(--accent-primary-bright); background: var(--accent-primary-dim); border-radius: 6px; padding: 0 6px; }
+
+/* menu separator (shared) */
+.menu-sep { height: 1px; background: var(--border); margin: 4px 0; }

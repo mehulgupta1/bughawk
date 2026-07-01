@@ -1,0 +1,11 @@
+# Paste this into Scope tab → 📋 Paste program scope (HackerOne-style table)
+Asset	Type	Eligible for bounty
+In scope
+*.example.com	Domain	Eligible
+api.example.com	URL	Eligible
+shop.example.com	URL	Eligible
+203.0.113.0/24	CIDR	Eligible
+Out of scope
+*.legacy.example.com	Domain	Not eligible
+test.example.com	URL	Out of scope
+blog.example.com	URL	Ineligible

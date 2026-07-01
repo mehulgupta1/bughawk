@@ -1,0 +1,26 @@
+# Nmap normal output (-oN)
+Nmap scan report for scanme.example.com (45.33.32.156)
+Host is up (0.10s latency).
+PORT      STATE SERVICE   VERSION
+22/tcp    open  ssh       OpenSSH 6.6.1p1 Ubuntu 2ubuntu2.13
+80/tcp    open  http      Apache httpd 2.4.7
+6379/tcp  open  redis     Redis key-value store 5.0.7
+3306/tcp  open  mysql     MySQL 5.7.30
+445/tcp   open  microsoft-ds Samba smbd 3.X
+8080/tcp  open  http-proxy Apache Tomcat 9.0.30
+2222/tcp  open  ssh       OpenSSH 8.2
+
+# Masscan normal
+Discovered open port 27017/tcp on 10.0.0.5
+Discovered open port 23/tcp on 10.0.0.5
+
+# Naabu / generic host:port
+db.internal.example.com:5432
+api.example.com:443
+
+# Rustscan
+Open 192.168.1.10:9200
+192.168.1.20 -> [21,3389,5900]
+
+# Naabu JSON
+{"host":"jenkins.example.com","ip":"10.0.0.9","port":8080,"protocol":"tcp"}

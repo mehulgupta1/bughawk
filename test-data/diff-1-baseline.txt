@@ -1,0 +1,13 @@
+# DIFF TEST — step 1: import this first, then save a session (💾 Sessions → Save current)
+Nmap scan report for shop.example.com (93.184.216.34)
+Host is up.
+PORT     STATE SERVICE  VERSION
+22/tcp   open  ssh      OpenSSH 7.2p2
+80/tcp   open  http     Apache httpd 2.4.7
+443/tcp  open  https    nginx 1.18.0
+
+Nmap scan report for db-cluster.example.com (10.0.0.50)
+Host is up.
+PORT     STATE SERVICE  VERSION
+22/tcp   open  ssh      OpenSSH 8.2
+3306/tcp open  mysql    MySQL 5.7.30

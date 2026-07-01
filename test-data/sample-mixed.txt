@@ -1,0 +1,16 @@
+# httpx default + extras
+https://api.example.com [200] [API Gateway] [nginx,nodejs] [3421]
+https://admin.acme-corp.com [403] [Forbidden] [cloudflare]
+https://dev-staging.globex.io [301] [Moved] [apache,php]
+https://grafana.hooli.tv [200] [Grafana]
+# CSV
+shop.initech.net,200,Checkout
+old-legacy.umbrella.org,404
+mail.piedpiper.com,401,Sign in
+# JSON Lines
+{"url":"https://vault.starkindustries.com","status_code":500,"title":"Internal Error","tech":["envoy"]}
+{"url":"https://k8s.wayne-enterprises.com","status_code":200,"title":"Dashboard","tech":["nginx","react"],"content_length":8123}
+# plain domains (get default/unknown status)
+jenkins.cyberdyne.systems
+phpmyadmin.example.com
+internal.acme-corp.com

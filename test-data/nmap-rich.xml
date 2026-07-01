@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -sCV -oX" start="1718800000" version="7.94">
+  <host starttime="1718800000" endtime="1718800100">
+    <status state="up" reason="echo-reply"/>
+    <address addr="93.184.216.34" addrtype="ipv4"/>
+    <hostnames>
+      <hostname name="shop.example.com" type="user"/>
+    </hostnames>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack"/>
+        <service name="ssh" product="OpenSSH" version="7.2p2 Ubuntu 4ubuntu2.10" ostype="Linux">
+          <cpe>cpe:/a:openbsd:openssh:7.2p2</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="open" reason="syn-ack"/>
+        <service name="http" product="Apache httpd" version="2.4.7">
+          <cpe>cpe:/a:apache:http_server:2.4.7</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack"/>
+        <service name="https" product="nginx" version="1.18.0" tunnel="ssl">
+          <cpe>cpe:/a:igor_sysoev:nginx:1.18.0</cpe>
+        </service>
+        <script id="ssl-cert" output="Subject: commonName=shop.example.com&#xa;Subject Alternative Name: DNS:shop.example.com, DNS:admin.example.com, DNS:vpn.example.com, DNS:internal-api.example.com, DNS:*.dev.example.com&#xa;Not valid before: 2023-06-01T00:00:00&#xa;Not valid after:  2024-01-10T00:00:00&#xa;Issuer: commonName=R3/organizationName=Let's Encrypt"/>
+        <script id="ssl-enum-ciphers" output="TLSv1.0: &#xa;  ciphers: TLS_RSA_WITH_AES_128_CBC_SHA&#xa;TLSv1.2:&#xa;  ciphers: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256&#xa;  least strength: C"/>
+      </port>
+      <port protocol="tcp" portid="6379">
+        <state state="open" reason="syn-ack"/>
+        <service name="redis" product="Redis key-value store" version="5.0.7"/>
+        <script id="redis-info" output="Server &#xa;Version: 5.0.7&#xa;NOAUTH Authentication required is NOT set - server is open"/>
+      </port>
+      <port protocol="tcp" portid="3306">
+        <state state="open" reason="syn-ack"/>
+        <service name="mysql" product="MySQL" version="5.7.30">
+          <cpe>cpe:/a:mysql:mysql:5.7.30</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="21">
+        <state state="open" reason="syn-ack"/>
+        <service name="ftp" product="vsftpd" version="2.3.4">
+          <cpe>cpe:/a:vsftpd:vsftpd:2.3.4</cpe>
+        </service>
+        <script id="ftp-anon" output="Anonymous FTP login allowed (FTP code 230)"/>
+      </port>
+      <port protocol="tcp" portid="8080">
+        <state state="open" reason="syn-ack"/>
+        <service name="http-proxy" product="Apache Tomcat" version="9.0.30">
+          <cpe>cpe:/a:apache:tomcat:9.0.30</cpe>
+        </service>
+      </port>
+    </ports>
+  </host>
+
+  <host starttime="1718800000" endtime="1718800100">
+    <status state="up" reason="echo-reply"/>
+    <address addr="10.0.0.50" addrtype="ipv4"/>
+    <hostnames>
+      <hostname name="db-cluster.example.com" type="user"/>
+    </hostnames>
+    <ports>
+      <port protocol="tcp" portid="23">
+        <state state="open" reason="syn-ack"/>
+        <service name="telnet" product="Linux telnetd"/>
+      </port>
+      <port protocol="tcp" portid="27017">
+        <state state="open" reason="syn-ack"/>
+        <service name="mongodb" product="MongoDB" version="3.6.3">
+          <cpe>cpe:/a:mongodb:mongodb:3.6.3</cpe>
+        </service>
+        <script id="mongodb-info" output="MongoDB build info&#xa;access control is not enabled - no authorization required"/>
+      </port>
+      <port protocol="tcp" portid="9200">
+        <state state="open" reason="syn-ack"/>
+        <service name="http" product="Elasticsearch" version="6.8.0"/>
+        <script id="http-title" output="cluster_name: prod-es, indices accessible"/>
+      </port>
+      <port protocol="tcp" portid="445">
+        <state state="open" reason="syn-ack"/>
+        <service name="microsoft-ds" product="Samba smbd" version="3.0.20"/>
+        <script id="smb-vuln-ms17-010" output="VULNERABLE: Remote Code Execution vulnerability MS17-010 (CVE-2017-0143)"/>
+      </port>
+      <port protocol="tcp" portid="2222">
+        <state state="open" reason="syn-ack"/>
+        <service name="ssh" product="OpenSSH" version="8.2"/>
+      </port>
+      <port protocol="tcp" portid="139">
+        <state state="filtered" reason="no-response"/>
+        <service name="netbios-ssn"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>

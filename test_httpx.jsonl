@@ -1,0 +1,10 @@
+{"url":"https://api.example.com","status_code":200,"title":"API Root","tech":["nginx", "nodejs"], "content_length": 512}
+{"url":"https://legacy-auth.example.com","status_code":302,"title":"Found","location":"https://sso.example.com/login","tech":["tomcat", "java"]}
+{"url":"https://admin.example.com","status_code":403,"title":"Forbidden","tech":["nginx"]}
+{"url":"https://blog.example.com","status_code":301,"title":"Moved Permanently","location":"https://medium.com/example-blog","tech":["wordpress", "php"]}
+{"url":"https://dev.example.com","status_code":200,"title":"Dev Environment","tech":["apache", "php"]}
+{"url":"https://short.example.com","status_code":302,"title":"302 Found","location":"https://example.com/promotions/summer-sale","tech":["nginx"]}
+{"url":"https://unknown.example.com","status_code":500,"title":"Internal Server Error","tech":["express"]}
+{"url":"https://dashboard.example.com","status_code":200,"title":"Dashboard","tech":["react", "nginx"]}
+{"url":"https://payment-gateway.example.com","status_code":302,"title":"Redirecting...","location":"https://checkout.stripe.com/pay/cs_12345"}
+{"url":"https://shop.example.com","status_code":200,"title":"Store","tech":["magento", "php"]}

@@ -1,0 +1,34 @@
+# Dummy data: a single host with WAY more than 5 open ports (stress test)
+Nmap scan report for fat-host.example.com (10.10.10.10)
+Host is up (0.005s latency).
+PORT      STATE SERVICE      VERSION
+21/tcp    open  ftp          vsftpd 2.3.4
+22/tcp    open  ssh          OpenSSH 6.6.1p1 Ubuntu 2ubuntu2.13
+23/tcp    open  telnet       Linux telnetd
+25/tcp    open  smtp         Postfix smtpd
+53/tcp    open  domain       ISC BIND 9.9.5
+80/tcp    open  http         Apache httpd 2.4.7
+110/tcp   open  pop3         Dovecot pop3d
+143/tcp   open  imap         Dovecot imapd
+443/tcp   open  https        nginx 1.18.0
+445/tcp   open  microsoft-ds Samba smbd 4.3.11
+3306/tcp  open  mysql        MySQL 5.7.30
+5432/tcp  open  postgresql   PostgreSQL 9.6
+6379/tcp  open  redis        Redis key-value store 5.0.7
+8080/tcp  open  http-proxy   Apache Tomcat 9.0.30
+9200/tcp  open  http         Elasticsearch 6.8.0
+27017/tcp open  mongodb      MongoDB 3.6.3
+3389/tcp  open  ms-wbt-server Microsoft Terminal Services
+5900/tcp  open  vnc          VNC (protocol 3.8)
+
+# A second host, also more than 5 ports
+Nmap scan report for db-cluster.example.com (10.10.10.20)
+Host is up (0.005s latency).
+PORT      STATE SERVICE      VERSION
+22/tcp    open  ssh          OpenSSH 8.2
+1433/tcp  open  ms-sql-s     Microsoft SQL Server 2017
+1521/tcp  open  oracle-tns   Oracle TNS Listener 11.2.0.2
+3306/tcp  open  mysql        MySQL 8.0.22
+5432/tcp  open  postgresql   PostgreSQL 13.1
+11211/tcp open  memcached    Memcached 1.5.6
+15672/tcp open  http         RabbitMQ management 3.8.2
