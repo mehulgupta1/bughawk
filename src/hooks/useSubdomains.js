@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as storage from '../lib/storage.js';
 import { statusGroup, STATUS_GROUPS } from '../lib/status.js';
+import { logPerf } from '../lib/telemetry.js';
 
 const { KEYS } = storage;
 const ACTIVITY_CAP = 50;
@@ -122,6 +123,9 @@ export function useSubdomains(projectId, onMeta) {
   const freshLoad = useRef(false);
   const recordsRef = useRef(records);
   recordsRef.current = records;
+  // id -> record currently persisted to the row store, so writes touch only
+  // what changed (see storage.syncRecords).
+  const persistedRef = useRef(new Map());
 
   // Load when the active project changes.
   useEffect(() => {
@@ -132,19 +136,28 @@ export function useSubdomains(projectId, onMeta) {
       setSessions([]);
       setIsLoading(false);
       loadedFor.current = null;
+      persistedRef.current = new Map();
       return;
     }
     setIsLoading(true);
     loadedFor.current = null;
     (async () => {
+      const _t = import.meta.env?.DEV ? performance.now() : 0;
       const [data, log, sess] = await Promise.all([
-        storage.get(KEYS.subdomains(projectId), []),
+        storage.loadRecords(projectId),
         storage.get(KEYS.activity(projectId), []),
         storage.get(KEYS.subSessions(projectId), []),
       ]);
+      if (import.meta.env?.DEV) {
+        const ms = Math.round(performance.now() - _t);
+        console.log(`[load subs] ${ms}ms — records=${Array.isArray(data) ? data.length : 0}, sessions=${Array.isArray(sess) ? sess.length : 0}`);
+        logPerf('load-subs', { ms, records: Array.isArray(data) ? data.length : 0 });
+      }
       if (cancelled) return;
-      freshLoad.current = true; // don't re-serialize what we just read back
-      setRecords(Array.isArray(data) ? data : []);
+      freshLoad.current = true; // don't re-write what we just read back
+      const recs = Array.isArray(data) ? data : [];
+      persistedRef.current = new Map(recs.map((r) => [r.id, r]));
+      setRecords(recs);
       setActivity(Array.isArray(log) ? log : []);
       setSessions(Array.isArray(sess) ? sess : []);
       loadedFor.current = projectId;
@@ -165,7 +178,8 @@ export function useSubdomains(projectId, onMeta) {
       return;
     }
     const id = setTimeout(() => {
-      storage.set(KEYS.subdomains(projectId), records);
+      storage.syncRecords(projectId, records, persistedRef.current)
+        .then((m) => { persistedRef.current = m; });
     }, 400);
     return () => clearTimeout(id);
   }, [records, projectId, onMeta]);
@@ -181,11 +195,8 @@ export function useSubdomains(projectId, onMeta) {
       );
       const nextActivity = [entry, ...activity].slice(0, ACTIVITY_CAP);
 
-      // One transaction for both keys.
-      await storage.setMany([
-        [KEYS.subdomains(projectId), nextRecords],
-        [KEYS.activity(projectId), nextActivity],
-      ]);
+      persistedRef.current = await storage.syncRecords(projectId, nextRecords, persistedRef.current);
+      await storage.set(KEYS.activity(projectId), nextActivity);
 
       setRecords(nextRecords);
       setActivity(nextActivity);
@@ -260,11 +271,11 @@ export function useSubdomains(projectId, onMeta) {
     if (!projectId || !sessionData) return;
     const nextRecords = Array.isArray(sessionData.records) ? sessionData.records : (Array.isArray(sessionData) ? sessionData : []);
     const nextActivity = Array.isArray(sessionData.activity) ? sessionData.activity : [];
-    
-    await storage.setMany([
-      [KEYS.subdomains(projectId), nextRecords],
-      [KEYS.activity(projectId), nextActivity],
-    ]);
+
+    // Wholesale replace: syncRecords deletes rows not in the session and writes
+    // the new ones in one transaction.
+    persistedRef.current = await storage.syncRecords(projectId, nextRecords, persistedRef.current);
+    await storage.set(KEYS.activity(projectId), nextActivity);
     setRecords(nextRecords);
     setActivity(nextActivity);
   }, [projectId]);

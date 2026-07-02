@@ -1,17 +1,23 @@
-import { memo, useEffect, useMemo, useState, useCallback } from 'react';
+import { memo, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { get, set, KEYS } from '../../lib/storage.js';
-import { buildGraph, queryGraph, parseNuclei } from '../../lib/graph.js';
-import { snapshotSig, computeEvents, newHostsSince, resurrections, churn } from '../../lib/events.js';
-import { buildWorklist, worklistCsv, DEFAULT_WEIGHTS, WEIGHT_LABELS } from '../../lib/worklist.js';
-import { getSevColor, buildTemplates, csvCell } from '../UrlParser/engine.js';
+import { parseNuclei } from '../../lib/graph.js';
+import { snapshotSig, computeEvents, resurrections, churn } from '../../lib/events.js';
+import { DEFAULT_WEIGHTS, WEIGHT_LABELS } from '../../lib/worklist.js';
+import { getSevColor } from '../UrlParser/engine.js';
 
 const WL_PAGE = 100;
-
-const WEEK = 7 * 24 * 60 * 60 * 1000;
 const fmt = (ts) => new Date(ts).toLocaleString();
+
+function downloadCsv(csv) {
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'worklist.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
 const EVENT_LABEL = { host_new: '🆕 new host', host_back: '⚠ resurrected', host_gone: '✖ gone', port_new: '➕ new port' };
 
-const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs = [], ports = [], scopeRules = [] }) {
+const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs = [], ports = [] }) {
   const [urlResults, setUrlResults] = useState([]);
   const [nuclei, setNuclei] = useState([]);
   const [nucleiText, setNucleiText] = useState('');
@@ -63,12 +69,6 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
     });
   }, [activeProjectId]);
 
-  const newHosts = useMemo(() => newHostsSince(events, Date.now() - WEEK), [events]);
-  const nodes = useMemo(
-    () => buildGraph({ subs, ports, urlResults, nuclei, scopeRules, newHosts }),
-    [subs, ports, urlResults, nuclei, scopeRules, newHosts],
-  );
-
   const importNuclei = useCallback(async () => {
     const parsed = parseNuclei(nucleiText);
     if (parsed.length === 0) { alert('No nuclei findings parsed. Paste `nuclei -jsonl` output.'); return; }
@@ -77,37 +77,51 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
     setNucleiText('');
     alert(`Imported ${parsed.length} nuclei finding(s).`);
   }, [nucleiText, activeProjectId]);
-  const results = useMemo(() => queryGraph(nodes, q), [nodes, q]);
-  const takeovers = useMemo(() => nodes.filter((n) => n.takeover), [nodes]);
+
+  // Feeds derive from the (small, capped) events log — cheap, stay on main.
   const churnTop = useMemo(() => churn(events).slice(0, 10), [events]);
   const resur = useMemo(() => resurrections(events).slice(-20).reverse(), [events]);
   const recent = useMemo(() => [...events].sort((a, b) => b.ts - a.ts).slice(0, 50), [events]);
 
-  // Worklist: rank every actionable item across the surface.
-  const rarityMap = useMemo(() => {
-    const m = new Map();
-    for (const t of buildTemplates(urlResults)) m.set(t.template, t.rarity);
-    return m;
-  }, [urlResults]);
-  const worklist = useMemo(() => buildWorklist(nodes, rarityMap, weights), [nodes, rarityMap, weights]);
-  const wlFiltered = useMemo(() => worklist.filter((it) => {
-    if (it.score < wlMinScore) return false;
-    if (wlInScopeOnly && nodes.find((n) => n.host === it.host)?.inScope === 'out') return false;
-    if (wlHideDone && done[it.id]) return false;
-    return true;
-  }), [worklist, wlMinScore, wlInScopeOnly, wlHideDone, done, nodes]);
+  // Everything derived from the 100k-host graph (buildGraph + queryGraph +
+  // buildWorklist) runs in a worker that reads from IndexedDB; the main thread
+  // only ever holds the capped display slices, so opening/filtering never blocks.
+  const [surf, setSurf] = useState({ hostCount: 0, results: [], resultCount: 0, wlSlice: [], wlCount: 0, wlPages: 1, page: 0, takeovers: [], takeoverCount: 0 });
+  const workerRef = useRef(null);
+  const reqRef = useRef(0);
+  // Rebuild key: bump when the underlying data changes so the worker recomputes
+  // its cached graph (edits that don't change these counts don't need a rebuild).
+  const version = `${subs.length}:${ports.length}:${nuclei.length}:${urlResults.length}`;
+
+  useEffect(() => {
+    const w = new Worker(new URL('./surface.worker.js', import.meta.url), { type: 'module' });
+    w.onmessage = (e) => {
+      const d = e.data || {};
+      if (d.csv != null) { downloadCsv(d.csv); return; }
+      if (d.reqId === reqRef.current && !d.error) setSurf(d);
+    };
+    workerRef.current = w;
+    return () => { w.terminate(); workerRef.current = null; };
+  }, []);
+
+  const wlParams = useMemo(
+    () => ({ minScore: wlMinScore, inScopeOnly: wlInScopeOnly, hideDone: wlHideDone, page: wlPage }),
+    [wlMinScore, wlInScopeOnly, wlHideDone, wlPage],
+  );
+  useEffect(() => {
+    if (!workerRef.current) return undefined;
+    const id = setTimeout(() => {
+      reqRef.current += 1;
+      workerRef.current.postMessage({ reqId: reqRef.current, projectId: activeProjectId, version, q, weights, wl: wlParams, done });
+    }, 250);
+    return () => clearTimeout(id);
+  }, [activeProjectId, version, q, weights, wlParams, done]);
+
   useEffect(() => { setWlPage(0); }, [wlMinScore, wlInScopeOnly, wlHideDone, weights, urlResults]);
-  const wlPages = Math.max(1, Math.ceil(wlFiltered.length / WL_PAGE));
-  const wlSafePage = Math.min(wlPage, wlPages - 1);
-  const wlSlice = wlFiltered.slice(wlSafePage * WL_PAGE, wlSafePage * WL_PAGE + WL_PAGE);
 
   const exportWorklist = useCallback(() => {
-    const blob = new Blob([worklistCsv(wlFiltered, csvCell)], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'worklist.csv'; a.click();
-    window.URL.revokeObjectURL(url);
-  }, [wlFiltered]);
+    workerRef.current?.postMessage({ exportCsv: true, projectId: activeProjectId, version, q, weights, wl: wlParams, done });
+  }, [activeProjectId, version, q, weights, wlParams, done]);
 
   // Snapshot: diff current data vs last snapshot, append events.
   const takeSnapshot = useCallback(async () => {
@@ -132,7 +146,7 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
       <header className="sf-head">
         <div>
           <h1>Attack Surface</h1>
-          <p>Cross-tab graph · {nodes.length.toLocaleString()} hosts · {events.length.toLocaleString()} events{savedAt ? ` · last snapshot ${fmt(savedAt)}` : ' · no snapshot yet'}</p>
+          <p>Cross-tab graph · {surf.hostCount.toLocaleString()} hosts · {events.length.toLocaleString()} events{savedAt ? ` · last snapshot ${fmt(savedAt)}` : ' · no snapshot yet'}</p>
         </div>
         <button className="sf-btn-primary" onClick={takeSnapshot}>📸 Snapshot now</button>
       </header>
@@ -141,7 +155,7 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
       <section className="sf-panel sf-pad">
         <div className="sf-wl-head">
           <strong>🎯 Priority Worklist</strong>
-          <span className="sf-count">{wlFiltered.length.toLocaleString()} items</span>
+          <span className="sf-count">{surf.wlCount.toLocaleString()} items</span>
           <button className="sf-btn-ghost" onClick={exportWorklist} style={{ marginLeft: 'auto' }}>📦 Export CSV</button>
         </div>
 
@@ -166,8 +180,8 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
             <span className="sf-c-sm">#</span><span className="sf-c-sm">Score</span><span className="sf-c-sm">Kind</span>
             <span className="sf-c-host">Target</span><span className="sf-c-md">Detail</span><span className="sf-c-sm">Done</span>
           </div>
-          {wlSlice.map((it, i) => {
-            const rank = wlSafePage * WL_PAGE + i + 1;
+          {surf.wlSlice.map((it, i) => {
+            const rank = surf.page * WL_PAGE + i + 1;
             const color = getSevColor(it.severity);
             const breakdown = Object.entries(it.parts).map(([k, v]) => `${k}: ${Math.round(v * 10) / 10}`).join('  ');
             return (
@@ -181,15 +195,15 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
               </div>
             );
           })}
-          {wlFiltered.length === 0 && <div className="sf-empty">Nothing queued. Import findings/subs/ports and lower the filters.</div>}
+          {surf.wlCount === 0 && <div className="sf-empty">Nothing queued. Import findings/subs/ports and lower the filters.</div>}
         </div>
-        {wlPages > 1 && (
+        {surf.wlPages > 1 && (
           <div className="sf-pager">
-            <button className="sf-btn-ghost" disabled={wlSafePage === 0} onClick={() => setWlPage(0)}>« First</button>
-            <button className="sf-btn-ghost" disabled={wlSafePage === 0} onClick={() => setWlPage((p) => p - 1)}>‹ Prev</button>
-            <span>Page {wlSafePage + 1} / {wlPages}</span>
-            <button className="sf-btn-ghost" disabled={wlSafePage >= wlPages - 1} onClick={() => setWlPage((p) => p + 1)}>Next ›</button>
-            <button className="sf-btn-ghost" disabled={wlSafePage >= wlPages - 1} onClick={() => setWlPage(wlPages - 1)}>Last »</button>
+            <button className="sf-btn-ghost" disabled={surf.page === 0} onClick={() => setWlPage(0)}>« First</button>
+            <button className="sf-btn-ghost" disabled={surf.page === 0} onClick={() => setWlPage((p) => p - 1)}>‹ Prev</button>
+            <span>Page {surf.page + 1} / {surf.wlPages}</span>
+            <button className="sf-btn-ghost" disabled={surf.page >= surf.wlPages - 1} onClick={() => setWlPage((p) => p + 1)}>Next ›</button>
+            <button className="sf-btn-ghost" disabled={surf.page >= surf.wlPages - 1} onClick={() => setWlPage(surf.wlPages - 1)}>Last »</button>
           </div>
         )}
       </section>
@@ -207,13 +221,13 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
             </label>
           ))}
         </div>
-        <div className="sf-count">{results.length.toLocaleString()} matching hosts</div>
+        <div className="sf-count">{surf.resultCount.toLocaleString()} matching hosts</div>
         <div className="sf-table">
           <div className="sf-row sf-row-head">
             <span className="sf-c-host">Host</span><span className="sf-c-sm">Scope</span><span className="sf-c-sm">Status</span>
             <span className="sf-c-md">Ports</span><span className="sf-c-sm">Finding</span><span className="sf-c-md">IP</span>
           </div>
-          {results.slice(0, 300).map((n) => (
+          {surf.results.map((n) => (
             <div key={n.host} className="sf-row">
               <span className="sf-c-host" title={n.host}>{n.isNew && <b className="sf-new">NEW</b>}{n.takeover && <b className="sf-to">TAKEOVER</b>}{n.host}</span>
               <span className={`sf-c-sm sf-scope-${n.inScope}`}>{n.inScope}</span>
@@ -223,7 +237,7 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
               <span className="sf-c-md sf-mono">{n.ip || '—'}</span>
             </div>
           ))}
-          {results.length === 0 && <div className="sf-empty">No hosts match. Import subs/ports/URLs in the other tabs, then snapshot.</div>}
+          {surf.resultCount === 0 && <div className="sf-empty">No hosts match. Import subs/ports/URLs in the other tabs, then snapshot.</div>}
         </div>
       </section>
 
@@ -288,11 +302,11 @@ const SurfaceTab = memo(function SurfaceTab({ activeProjectId = 'default', subs 
         </section>
       </div>
 
-      {takeovers.length > 0 && (
+      {surf.takeoverCount > 0 && (
         <section className="sf-panel sf-pad">
-          <strong className="sf-to-title">🎯 Subdomain takeover candidates ({takeovers.length})</strong>
+          <strong className="sf-to-title">🎯 Subdomain takeover candidates ({surf.takeoverCount})</strong>
           <div className="sf-table">
-            {takeovers.map((n) => (
+            {surf.takeovers.map((n) => (
               <div key={n.host} className="sf-row">
                 <span className="sf-c-host">{n.host}</span>
                 <span className="sf-c-md sf-mono">{n.cname || '—'}</span>

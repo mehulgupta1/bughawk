@@ -2,6 +2,10 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import LoginGate from './components/Auth/LoginGate.jsx';
 import { migrateFromLocalStorage } from './lib/storage.js';
+import { initTelemetry } from './lib/telemetry.js';
+
+// Dev-only: stream per-tab timings / jank / errors to perf.log for triage.
+if (import.meta.env.DEV) initTelemetry();
 
 import './styles/variables.css';
 import './styles/base.css';
@@ -22,3 +26,8 @@ migrateFromLocalStorage().finally(() => {
     <LoginGate><App /></LoginGate>
   );
 });
+
+// PWA: register the service worker in production only (dev uses Vite HMR).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}

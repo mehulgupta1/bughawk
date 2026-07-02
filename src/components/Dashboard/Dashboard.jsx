@@ -1,12 +1,8 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { get, KEYS } from '../../lib/storage.js';
-import { buildGraph } from '../../lib/graph.js';
-import { buildWorklist } from '../../lib/worklist.js';
-import { newHostsSince } from '../../lib/events.js';
 import { getSevColor } from '../UrlParser/engine.js';
 import { featureLabel } from '../../lib/features.js';
 
-const WEEK = 7 * 24 * 60 * 60 * 1000;
 import DonutChart from './DonutChart.jsx';
 import Heatmap from './Heatmap.jsx';
 import TrendChart from './TrendChart.jsx';
@@ -44,24 +40,38 @@ function Dashboard({
   portRecords, scopeRules, assets, onNavigate,
   portActivity, assetActivity,
 }) {
-  // Surface the top of the Priority Worklist right on the landing page.
-  const [wlData, setWlData] = useState({ urlResults: [], nuclei: [], events: [], weights: undefined });
   const [notebook, setNotebook] = useState([]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [last, nuclei, events, weights, nb] = await Promise.all([
-        get(KEYS.urlLastScan(activeProjectId), null),
-        get(KEYS.nucleiFindings(activeProjectId), []),
-        get(KEYS.surfaceEvents(activeProjectId), []),
-        get(KEYS.surfaceWeights(activeProjectId), undefined),
-        get(KEYS.notebook, []),
-      ]);
-      if (cancelled) return;
-      setWlData({ urlResults: last && Array.isArray(last.parsedData) ? last.parsedData : [], nuclei: Array.isArray(nuclei) ? nuclei : [], events: Array.isArray(events) ? events : [], weights });
-      setNotebook(Array.isArray(nb) ? nb : []);
+      const nb = await get(KEYS.notebook, []);
+      if (!cancelled) setNotebook(Array.isArray(nb) ? nb : []);
     })();
     return () => { cancelled = true; };
+  }, [activeProjectId]);
+
+  // Priority Worklist preview. buildGraph/buildWorklist over the whole dataset
+  // is a scope-test + regex per host — synchronous, it froze the UI for seconds
+  // at 100k records. Run it in a worker that reads straight from IndexedDB so
+  // the main thread stays free; nothing large crosses postMessage.
+  const [topWork, setTopWork] = useState([]);
+  const wlWorker = useRef(null);
+  const wlReq = useRef(0);
+  useEffect(() => {
+    const w = new Worker(new URL('./worklist.worker.js', import.meta.url), { type: 'module' });
+    w.onmessage = (e) => { if (e.data?.reqId === wlReq.current) setTopWork(Array.isArray(e.data.top) ? e.data.top : []); };
+    wlWorker.current = w;
+    return () => { w.terminate(); wlWorker.current = null; };
+  }, []);
+  useEffect(() => {
+    if (!activeProjectId || !wlWorker.current) { setTopWork([]); return undefined; }
+    // ponytail: 500ms debounce also lets the 400ms record persist land first, so
+    // the worker reads fresh data (top-10 preview — eventual consistency is fine).
+    const id = setTimeout(() => {
+      wlReq.current += 1;
+      wlWorker.current.postMessage({ projectId: activeProjectId, reqId: wlReq.current });
+    }, 500);
+    return () => clearTimeout(id);
   }, [activeProjectId, records, portRecords]);
 
   // Feature coverage across the notebook (which features exist, how many untested).
@@ -75,11 +85,6 @@ function Dashboard({
     return Object.entries(cov).sort((a, b) => b[1].total - a[1].total);
   }, [notebook]);
 
-  const topWork = useMemo(() => {
-    const newHosts = newHostsSince(wlData.events, Date.now() - WEEK);
-    const nodes = buildGraph({ subs: records, ports: portRecords, urlResults: wlData.urlResults, nuclei: wlData.nuclei, scopeRules, newHosts });
-    return buildWorklist(nodes, new Map(), wlData.weights).slice(0, 10);
-  }, [records, portRecords, scopeRules, wlData]);
   // Unified activity feed: subdomain imports + port imports + asset additions.
   const feed = useMemo(() => {
     const items = [];

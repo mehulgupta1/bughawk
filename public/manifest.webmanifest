@@ -1,0 +1,13 @@
+{
+  "name": "BugHawk — Recon Workspace",
+  "short_name": "BugHawk",
+  "description": "Private, in-browser bug-bounty recon workspace.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

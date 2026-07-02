@@ -62,7 +62,13 @@ export async function recordSnapshot(projectId, subs, ports) {
   const events = await get(KEYS.surfaceEvents(projectId), []);
   const newEvents = computeEvents(prev.sig || {}, currSig, events, Date.now());
   if (newEvents.length === 0) return 0;
-  await set(KEYS.surfaceEvents(projectId), [...events, ...newEvents]);
+  // ponytail: cap the append-only log so it can't grow unbounded and make every
+  // import re-serialize a giant array. Keep the most recent MAX_EVENTS; raise it
+  // (or age out by ts) if resurrection detection over very old events matters.
+  const MAX_EVENTS = 5000;
+  const merged = [...events, ...newEvents];
+  const capped = merged.length > MAX_EVENTS ? merged.slice(merged.length - MAX_EVENTS) : merged;
+  await set(KEYS.surfaceEvents(projectId), capped);
   await set(KEYS.surfaceSnapshot(projectId), { ts: Date.now(), sig: currSig });
   return newEvents.length;
 }

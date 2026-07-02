@@ -1,5 +1,33 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+// Dev-only: receive telemetry beacons (src/lib/telemetry.js) and append them to
+// perf.log at the project root, so per-tab timings / jank / errors are readable
+// as a file instead of screenshots. Truncates on session-start to keep the log
+// scoped to the latest run.
+function perfLogPlugin() {
+  const file = fileURLToPath(new URL('./perf.log', import.meta.url));
+  const handler = (req, res, next) => {
+    if (req.url !== '/__perf' || req.method !== 'POST') return next();
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      try {
+        if (body.includes('"kind":"session-start"')) fs.writeFileSync(file, ''); // fresh run
+        fs.appendFileSync(file, body);
+      } catch { /* best effort */ }
+      res.statusCode = 204;
+      res.end();
+    });
+  };
+  return {
+    name: 'perf-log',
+    configureServer(server) { server.middlewares.use(handler); },
+    configurePreviewServer(server) { server.middlewares.use(handler); },
+  };
+}
 
 // Same-origin JS proxy: the browser hits /__jsproxy?url=<remote .js>, Vite fetches
 // it server-side (Node, no CORS) and streams it back. Lets JS Recon pull any
@@ -31,5 +59,18 @@ function jsProxyPlugin() {
 }
 
 export default defineConfig({
-  plugins: [react(), jsProxyPlugin()],
+  plugins: [react(), jsProxyPlugin(), perfLogPlugin()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split React into its own long-cached chunk; app code + lazy tabs
+        // (see App.jsx) get their own chunks so first paint doesn't parse
+        // every tab. Workers are bundled separately by Vite already.
+        manualChunks(id) {
+          if (/node_modules[/\\](react|react-dom|scheduler)[/\\]/.test(id)) return 'react-vendor';
+          return undefined;
+        },
+      },
+    },
+  },
 });

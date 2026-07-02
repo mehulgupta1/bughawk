@@ -28,6 +28,7 @@ function useDebouncedValue(value, delay) {
 
 function SubdomainTab({
   subs,
+  active = true,
   onCopyToast,
   keywords,
   onSaveKeywords,
@@ -59,8 +60,9 @@ function SubdomainTab({
   // Now computed once on mount — doesn't meaningfully change within a session.
   const newCutoff = useMemo(() => Date.now() - NEW_WINDOW_MS, []);
 
-  // Available data columns adapt to the project's actual data.
-  const available = useMemo(() => getAvailableColumns(records), [records]);
+  // Available data columns adapt to the project's actual data. Skip the scan
+  // while this tab is hidden — no point computing columns for an invisible table.
+  const available = useMemo(() => (active ? getAvailableColumns(records) : []), [active, records]);
   const visibleCols = useMemo(
     () => available.filter((c) => visible.has(c.key)),
     [available, visible]
@@ -74,6 +76,9 @@ function SubdomainTab({
   //
   // Step 1: base = search + auto-filter-oos + focus filter
   const base = useMemo(() => {
+    // Hidden tab: don't filter/sort 100k rows in the background. Recomputes the
+    // moment the tab becomes active (deps include `active`).
+    if (!active) return [];
     const q = debouncedQuery.trim().toLowerCase();
     const focus = focusNewIds && focusNewIds.size ? focusNewIds : null;
     const scopeFilter = autoFilter && hasScope;
@@ -85,7 +90,7 @@ function SubdomainTab({
       if (q && !r.host.includes(q)) return false;
       return true;
     });
-  }, [records, debouncedQuery, autoFilter, focusNewIds, hasScope, scopeStatus]);
+  }, [active, records, debouncedQuery, autoFilter, focusNewIds, hasScope, scopeStatus]);
 
   // Step 2: counts from base (for filter pills) — does NOT depend on selection
   const counts = useMemo(() => {

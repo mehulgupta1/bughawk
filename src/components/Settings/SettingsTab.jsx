@@ -1,8 +1,9 @@
 // Settings: theme + security + API key vault + data summary. (Data lives in IndexedDB.)
 import ApiKeysPanel from './ApiKeysPanel.jsx';
 import SecurityPanel from './SecurityPanel.jsx';
+import BackupPanel from './BackupPanel.jsx';
 
-export default function SettingsTab({ theme, onToggleTheme, projects, onWipeProject, activeProject }) {
+export default function SettingsTab({ theme, onToggleTheme, projects, onWipeProject, activeProject, onCopyToast }) {
   return (
     <div className="tab-content">
       <div className="tab-head">
@@ -38,6 +39,7 @@ export default function SettingsTab({ theme, onToggleTheme, projects, onWipeProj
             <div className="setting-desc">{projects.length} project(s) stored locally in IndexedDB.</div>
           </div>
         </div>
+        <BackupPanel onCopyToast={onCopyToast} />
         {activeProject && (
           <div className="setting-row">
             <div className="setting-info">

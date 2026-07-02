@@ -76,7 +76,7 @@ export function useProjects() {
   }, []);
 
   const deleteProject = useCallback((id) => {
-    storage.del(KEYS.subdomains(id)); // wipe its isolated dataset
+    storage.deleteProjectRecords(id); // wipe its isolated per-row dataset (+ legacy blob)
     storage.del(KEYS.activity(id));
     setProjects((prev) => prev.filter((p) => p.id !== id));
   }, []);
