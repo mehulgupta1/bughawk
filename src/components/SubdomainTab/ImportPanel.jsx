@@ -20,6 +20,10 @@ export default function ImportPanel({
   onGroupByIp,
 }) {
   const taRef = useRef(null);
+  // Holds a large paste OUT of the textarea. A multi-MB dump in a <textarea>
+  // freezes the browser for seconds just laying out the text; we intercept it
+  // and import straight from here instead.
+  const pastedRef = useRef('');
   const [count, setCount] = useState(0);
   const [hasText, setHasText] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,12 +41,28 @@ export default function ImportPanel({
   useEffect(() => () => recount.cancel(), [recount]);
 
   const onInput = (e) => {
+    pastedRef.current = ''; // typing/small paste supersedes any held big paste
     setResult(null);
     recount(e.target.value);
   };
 
+  // Intercept a large paste so the browser never has to render MBs of text in
+  // the textarea (that layout is the multi-second freeze). Keep it in a ref and
+  // show the row count; the textarea stays empty and snappy.
+  const LARGE_PASTE = 200_000; // ~200KB / a few thousand lines
+  const onPaste = (e) => {
+    const text = e.clipboardData?.getData('text') ?? '';
+    if (text.length <= LARGE_PASTE) return; // small paste: normal textarea behaviour
+    e.preventDefault();
+    pastedRef.current = text;
+    if (taRef.current) taRef.current.value = '';
+    setResult(null);
+    setCount(countLines(text));
+    setHasText(true);
+  };
+
   const runImport = () => {
-    const text = taRef.current ? taRef.current.value : '';
+    const text = pastedRef.current || (taRef.current ? taRef.current.value : '');
     if (!text.trim() || busy) return;
     setBusy(true);
     setResult(null);
@@ -81,6 +101,7 @@ export default function ImportPanel({
           setResult(summary);
           setProgress(null);
           setBusy(false);
+          pastedRef.current = '';
           if (taRef.current) taRef.current.value = '';
           setCount(0);
           setHasText(false);
@@ -96,6 +117,7 @@ export default function ImportPanel({
         ref={taRef}
         className="import-panel-textarea mono"
         onInput={onInput}
+        onPaste={onPaste}
         placeholder="Drop your recon output here — Subfinder, Amass, httpx, raw lists, JSON, anything…"
         spellCheck={false}
         disabled={busy}
