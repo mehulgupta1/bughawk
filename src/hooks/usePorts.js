@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as storage from '../lib/storage.js';
+import { timed } from '../lib/telemetry.js';
 
 const { KEYS } = storage;
 const ACTIVITY_CAP = 50;
@@ -150,7 +151,7 @@ export function usePorts(projectId, onMeta) {
     return () => clearTimeout(id);
   }, [records, projectId, onMeta]);
 
-  const importRecords = useCallback(async (partials) => {
+  const importRecords = useCallback((partials) => timed(`Import ports (${(partials || []).length} rows)`, async () => {
     if (!projectId) return { added: 0, updated: 0, skipped: 0 };
     const { records: next, entry, summary } = mergeImport(recordsRef.current, partials);
     const nextActivity = [entry, ...activity].slice(0, ACTIVITY_CAP);
@@ -161,7 +162,7 @@ export function usePorts(projectId, onMeta) {
     setRecords(next);
     setActivity(nextActivity);
     return summary;
-  }, [projectId, activity]);
+  }), [projectId, activity]);
 
   // Apply a Map<recordId, {cves,kev,epss}> from the cve layer and persist.
   const applyCve = useCallback((resultMap) => {

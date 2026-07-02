@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as storage from '../lib/storage.js';
 import { statusGroup, STATUS_GROUPS } from '../lib/status.js';
-import { logPerf } from '../lib/telemetry.js';
+import { logPerf, timed } from '../lib/telemetry.js';
 
 const { KEYS } = storage;
 const ACTIVITY_CAP = 50;
@@ -187,7 +187,7 @@ export function useSubdomains(projectId, onMeta) {
   // Merge parsed partials, dedupe by host, append an activity entry, and write
   // records + activity in a single IndexedDB transaction. Returns the summary.
   const importRecords = useCallback(
-    async (partials) => {
+    (partials) => timed(`Import subdomains (${(partials || []).length} rows)`, async () => {
       if (!projectId) return { added: 0, updated: 0, skipped: 0 };
       const { records: nextRecords, entry, summary } = mergeImport(
         recordsRef.current,
@@ -195,11 +195,12 @@ export function useSubdomains(projectId, onMeta) {
       );
       const nextActivity = [entry, ...activity].slice(0, ACTIVITY_CAP);
 
-      persistedRef.current = await storage.syncRecords(projectId, nextRecords, persistedRef.current);
-      await storage.set(KEYS.activity(projectId), nextActivity);
-
+      // Show the imported data immediately; the debounced persist effect writes
+      // the rows to IndexedDB in the background. Awaiting the 100k-row write here
+      // is what froze imports for tens of seconds under contention.
       setRecords(nextRecords);
       setActivity(nextActivity);
+      storage.set(KEYS.activity(projectId), nextActivity);
       if (onMeta)
         onMeta(projectId, {
           subdomainCount: nextRecords.length,
@@ -208,7 +209,7 @@ export function useSubdomains(projectId, onMeta) {
         });
 
       return summary;
-    },
+    }),
     [projectId, activity, onMeta]
   );
 
@@ -267,21 +268,20 @@ export function useSubdomains(projectId, onMeta) {
 
   const clearAll = useCallback(() => setRecords([]), []);
 
-  const loadSession = useCallback(async (sessionData) => {
+  const loadSession = useCallback((sessionData) => timed('Load/reload session', async () => {
     if (!projectId || !sessionData) return;
     const nextRecords = Array.isArray(sessionData.records) ? sessionData.records : (Array.isArray(sessionData) ? sessionData : []);
     const nextActivity = Array.isArray(sessionData.activity) ? sessionData.activity : [];
-
-    // Wholesale replace: syncRecords deletes rows not in the session and writes
-    // the new ones in one transaction.
-    persistedRef.current = await storage.syncRecords(projectId, nextRecords, persistedRef.current);
-    await storage.set(KEYS.activity(projectId), nextActivity);
+    // Show the session immediately; the debounced persist effect writes the 100k
+    // rows to IndexedDB in the background. Awaiting that write here is what made
+    // reload feel frozen for seconds/minutes.
     setRecords(nextRecords);
     setActivity(nextActivity);
-  }, [projectId]);
+    storage.set(KEYS.activity(projectId), nextActivity);
+  }), [projectId]);
 
   // ── In-app named sessions (snapshots stored in IndexedDB, reload anytime) ──
-  const saveNamedSession = useCallback(async (name) => {
+  const saveNamedSession = useCallback((name) => timed('Save session', async () => {
     if (!projectId) return;
     const snap = {
       id: (globalThis.crypto?.randomUUID?.() || String(Date.now())),
@@ -293,8 +293,9 @@ export function useSubdomains(projectId, onMeta) {
     };
     const next = [snap, ...sessions].slice(0, 50);
     setSessions(next);
-    await storage.set(KEYS.subSessions(projectId), next);
-  }, [projectId, sessions, activity]);
+    // Background write — don't block the click on the ~2s blob save.
+    storage.set(KEYS.subSessions(projectId), next);
+  }), [projectId, sessions, activity]);
 
   const loadNamedSession = useCallback(async (id) => {
     const s = sessions.find((x) => x.id === id);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { countLines, parseLine } from '../../lib/parser.js';
 import { debounce } from '../../utils/debounce.js';
+import { logPerf } from '../../lib/telemetry.js';
 
 const CHUNK = 5000;
 
@@ -48,18 +49,32 @@ export default function ImportPanel({
     const lines = text.split(/\r?\n/);
     const recs = [];
     let idx = 0;
+    // Split the timing: `ms` = actual parse CPU (summed across chunks), `wallMs`
+    // = elapsed incl. the yields between chunks. Import (merge+write) is timed
+    // separately as "Import subdomains".
+    const wallStart = performance.now();
+    let parseCpu = 0;
     setProgress({ done: 0, total: lines.length, phase: 'parse' });
 
     const step = () => {
+      const cs = performance.now();
       const end = Math.min(idx + CHUNK, lines.length);
       for (; idx < end; idx++) {
         const r = parseLine(lines[idx]);
         if (r) recs.push(r);
       }
+      parseCpu += performance.now() - cs;
       if (idx < lines.length) {
         setProgress({ done: idx, total: lines.length, phase: 'parse' });
         setTimeout(step, 0);
       } else {
+        logPerf('action', {
+          label: `Parse subdomains (${lines.length.toLocaleString()} lines)`,
+          ms: Math.round(parseCpu),
+          wallMs: Math.round(performance.now() - wallStart),
+          lines: lines.length,
+          parsed: recs.length,
+        });
         setProgress({ done: lines.length, total: lines.length, phase: 'save' });
         setTimeout(async () => {
           const summary = await onImport(recs);

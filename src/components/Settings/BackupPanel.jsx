@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { exportAll, importAll } from '../../lib/storage.js';
+import { timed } from '../../lib/telemetry.js';
 
 // Whole-workspace backup: one .json holding every project, wordlist, dork,
 // API key and setting. Lets you move everything between browsers/ports/machines
@@ -12,7 +13,7 @@ export default function BackupPanel({ onCopyToast }) {
   const doExport = async () => {
     setBusy(true);
     try {
-      const dump = await exportAll({ includeAuth: includeSecrets });
+      const dump = await timed('Backup export', () => exportAll({ includeAuth: includeSecrets }));
       const blob = new Blob([JSON.stringify(dump)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -42,7 +43,7 @@ export default function BackupPanel({ onCopyToast }) {
       if (!confirm(`Restore ${keyCount} keys from this backup?\n\nThis REPLACES your current workspace (projects, wordlists, dorks, API keys). The app will reload afterward.`)) return;
       setBusy(true);
       try {
-        await importAll(dump, { mode: 'replace', includeAuth: includeSecrets });
+        await timed('Backup restore', () => importAll(dump, { mode: 'replace', includeAuth: includeSecrets }));
         onCopyToast?.('Workspace restored — reloading…');
         setTimeout(() => location.reload(), 800);
       } catch (err) {

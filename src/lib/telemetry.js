@@ -36,6 +36,18 @@ export function setPerfTab(tab) { currentTab = tab; }
 // Explicit timing/event, e.g. logPerf('tab', { tab, ms }).
 export function logPerf(kind, data = {}) { send({ kind, ...data }); }
 
+// Wrap an async action so its FULL duration lands in perf.log (click→paint
+// misses work that continues after the first frame — imports, saves, exports).
+// Usage: await timed('Export CSV', () => doExport());
+export async function timed(label, fn) {
+  const t = performance.now();
+  try {
+    return await fn();
+  } finally {
+    send({ kind: 'action', label, ms: Math.round(performance.now() - t) });
+  }
+}
+
 export function initTelemetry() {
   if (enabled) return;
   enabled = true;
@@ -76,6 +88,21 @@ export function initTelemetry() {
       }
     }).observe({ type: 'event', durationThreshold: 200, buffered: true });
   } catch { /* no event timing */ }
+
+  // Auto-time every action button: click → two frames later (React commit +
+  // paint), labelled by the button's text. Gives a per-feature ms for
+  // export/import/save/reload/etc. with no per-component wiring. Async actions
+  // whose work outlives the paint are additionally wrapped with timed().
+  document.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.('button, [role="button"], .btn');
+    if (!btn) return;
+    const label = (btn.getAttribute('data-perf') || btn.getAttribute('aria-label') || btn.title || btn.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (!label) return;
+    const t = performance.now();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      send({ kind: 'action', label, ms: Math.round(performance.now() - t) });
+    }));
+  }, true);
 
   // Don't lose the tail buffer when the tab closes / reloads.
   window.addEventListener('pagehide', flush);
