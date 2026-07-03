@@ -1,41 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recordDelta } from './storage.js';
+import { chunkRecords } from './storage.js';
 
-// recordDelta drives what gets written/deleted in the per-row store. A wrong
-// delete = lost user data, so pin the behaviour.
+// chunkRecords splits the dataset into the blobs we persist. Getting the split
+// or count wrong would drop or duplicate records on save/load.
 
-test('first write: everything is a put, nothing deleted', () => {
-  const recs = [{ id: 'a' }, { id: 'b' }];
-  const { puts, deleteIds, curr } = recordDelta(recs, new Map());
-  assert.deepEqual(puts, recs);
-  assert.deepEqual(deleteIds, []);
-  assert.equal(curr.size, 2);
+test('splits into fixed-size chunks and preserves every record in order', () => {
+  const recs = Array.from({ length: 12 }, (_, i) => ({ id: i }));
+  const chunks = chunkRecords(recs, 5);
+  assert.equal(chunks.length, 3);           // 5 + 5 + 2
+  assert.deepEqual(chunks.map((c) => c.length), [5, 5, 2]);
+  assert.deepEqual(chunks.flat(), recs);    // nothing lost or reordered
 });
 
-test('single in-place edit only re-puts the changed record (identity diff)', () => {
-  const a = { id: 'a' };
-  const b = { id: 'b' };
-  const prev = new Map([['a', a], ['b', b]]);
-  const b2 = { ...b, tag: true }; // edited -> new object identity
-  const { puts, deleteIds } = recordDelta([a, b2], prev);
-  assert.deepEqual(puts, [b2]);   // a is unchanged (same ref) -> not written
-  assert.deepEqual(deleteIds, []);
+test('exact multiple: no trailing empty chunk', () => {
+  const recs = Array.from({ length: 10 }, (_, i) => ({ id: i }));
+  const chunks = chunkRecords(recs, 5);
+  assert.equal(chunks.length, 2);
+  assert.deepEqual(chunks.flat(), recs);
 });
 
-test('removed records are deleted', () => {
-  const a = { id: 'a' };
-  const b = { id: 'b' };
-  const prev = new Map([['a', a], ['b', b]]);
-  const { puts, deleteIds } = recordDelta([a], prev);
-  assert.deepEqual(puts, []);
-  assert.deepEqual(deleteIds, ['b']);
-});
-
-test('clear-all deletes every persisted row', () => {
-  const prev = new Map([['a', { id: 'a' }], ['b', { id: 'b' }]]);
-  const { puts, deleteIds, curr } = recordDelta([], prev);
-  assert.deepEqual(puts, []);
-  assert.deepEqual(deleteIds.sort(), ['a', 'b']);
-  assert.equal(curr.size, 0);
+test('empty input yields no chunks', () => {
+  assert.deepEqual(chunkRecords([], 5), []);
 });

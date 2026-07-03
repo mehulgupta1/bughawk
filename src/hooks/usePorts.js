@@ -169,12 +169,16 @@ export function usePorts(projectId, onMeta) {
     // Chunked so building 50k records yields to the browser instead of freezing.
     const { records: next, entry, summary } = await mergeImportChunked(recordsRef.current, partials);
     const nextActivity = [entry, ...activity].slice(0, ACTIVITY_CAP);
-    // Show immediately; the debounced persist effect writes records in the
-    // background, so importing into a large dataset doesn't block on rewriting
-    // the whole ports blob.
+    // Write BEFORE updating state so the snapshot/worklist workers (which fire
+    // on the state change and read the whole store) don't contend with the
+    // write. The await keeps the data durable before we're "done".
+    freshLoad.current = true;
+    await storage.setMany([
+      [KEYS.ports(projectId), next],
+      [KEYS.portActivity(projectId), nextActivity],
+    ]);
     setRecords(next);
     setActivity(nextActivity);
-    storage.set(KEYS.portActivity(projectId), nextActivity);
     return summary;
   }), [projectId, activity]);
 

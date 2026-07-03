@@ -123,9 +123,6 @@ export function useSubdomains(projectId, onMeta) {
   const freshLoad = useRef(false);
   const recordsRef = useRef(records);
   recordsRef.current = records;
-  // id -> record currently persisted to the row store, so writes touch only
-  // what changed (see storage.syncRecords).
-  const persistedRef = useRef(new Map());
 
   // Load when the active project changes.
   useEffect(() => {
@@ -136,32 +133,34 @@ export function useSubdomains(projectId, onMeta) {
       setSessions([]);
       setIsLoading(false);
       loadedFor.current = null;
-      persistedRef.current = new Map();
       return;
     }
     setIsLoading(true);
     loadedFor.current = null;
     (async () => {
       const _t = import.meta.env?.DEV ? performance.now() : 0;
-      const [data, log, sess] = await Promise.all([
+      // Only records + activity gate the load. subSessions can hold full
+      // 100k-record copies per saved session — reading them here made the load
+      // wait on hundreds of thousands of extra rows. Load them off the path.
+      const [data, log] = await Promise.all([
         storage.loadRecords(projectId),
         storage.get(KEYS.activity(projectId), []),
-        storage.get(KEYS.subSessions(projectId), []),
       ]);
       if (import.meta.env?.DEV) {
         const ms = Math.round(performance.now() - _t);
-        console.log(`[load subs] ${ms}ms — records=${Array.isArray(data) ? data.length : 0}, sessions=${Array.isArray(sess) ? sess.length : 0}`);
         logPerf('load-subs', { ms, records: Array.isArray(data) ? data.length : 0 });
       }
       if (cancelled) return;
       freshLoad.current = true; // don't re-write what we just read back
       const recs = Array.isArray(data) ? data : [];
-      persistedRef.current = new Map(recs.map((r) => [r.id, r]));
       setRecords(recs);
       setActivity(Array.isArray(log) ? log : []);
-      setSessions(Array.isArray(sess) ? sess : []);
       loadedFor.current = projectId;
       setIsLoading(false);
+      // Saved sessions (heavy — full record copies) load after, not blocking.
+      storage.get(KEYS.subSessions(projectId), []).then((sess) => {
+        if (!cancelled) setSessions(Array.isArray(sess) ? sess : []);
+      });
     })();
     return () => {
       cancelled = true;
@@ -178,8 +177,7 @@ export function useSubdomains(projectId, onMeta) {
       return;
     }
     const id = setTimeout(() => {
-      storage.syncRecords(projectId, records, persistedRef.current)
-        .then((m) => { persistedRef.current = m; });
+      storage.saveRecords(projectId, records);
     }, 400);
     return () => clearTimeout(id);
   }, [records, projectId, onMeta]);
@@ -195,12 +193,14 @@ export function useSubdomains(projectId, onMeta) {
       );
       const nextActivity = [entry, ...activity].slice(0, ACTIVITY_CAP);
 
-      // Show the imported data immediately; the debounced persist effect writes
-      // the rows to IndexedDB in the background. Awaiting the 100k-row write here
-      // is what froze imports for tens of seconds under contention.
+      // Persist as chunk blobs (fast) and AWAIT it so the import is durable
+      // before we're "done" — no data loss on reload. freshLoad skips the
+      // debounced effect's duplicate write.
+      freshLoad.current = true;
       setRecords(nextRecords);
       setActivity(nextActivity);
-      storage.set(KEYS.activity(projectId), nextActivity);
+      await storage.saveRecords(projectId, nextRecords);
+      await storage.set(KEYS.activity(projectId), nextActivity);
       if (onMeta)
         onMeta(projectId, {
           subdomainCount: nextRecords.length,
@@ -272,12 +272,13 @@ export function useSubdomains(projectId, onMeta) {
     if (!projectId || !sessionData) return;
     const nextRecords = Array.isArray(sessionData.records) ? sessionData.records : (Array.isArray(sessionData) ? sessionData : []);
     const nextActivity = Array.isArray(sessionData.activity) ? sessionData.activity : [];
-    // Show the session immediately; the debounced persist effect writes the 100k
-    // rows to IndexedDB in the background. Awaiting that write here is what made
-    // reload feel frozen for seconds/minutes.
+    // Show immediately, but AWAIT the chunk write so the loaded session is
+    // durable before we're "done".
+    freshLoad.current = true;
     setRecords(nextRecords);
     setActivity(nextActivity);
-    storage.set(KEYS.activity(projectId), nextActivity);
+    await storage.saveRecords(projectId, nextRecords);
+    await storage.set(KEYS.activity(projectId), nextActivity);
   }), [projectId]);
 
   // ── In-app named sessions (snapshots stored in IndexedDB, reload anytime) ──

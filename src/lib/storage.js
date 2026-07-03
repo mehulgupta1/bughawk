@@ -2,16 +2,14 @@
 // engine underneath is IndexedDB (via `idb`) instead of localStorage. All
 // functions return Promises.
 import { openDB } from 'idb';
+import { logPerf } from './telemetry.js';
 
 const PREFIX = 'bbd:';
 const DB_NAME = 'bbd-db';
 const STORE = 'kv';
-// Subdomain records live one-per-row here (keyed `${projectId}::${id}`) instead
-// of one giant value in `kv`. A 100k-record project was a single 28.6MB
-// structured-clone on every load and a full rewrite on every edit; per-row lets
-// us load a project by key-range and write only the rows that changed.
+// Legacy per-row store (superseded by chunked blobs). Kept only so existing
+// per-row data migrates into chunks on first load; `rangeFor` scopes a project.
 const SUBROWS = 'subrows';
-const rowKey = (projectId, id) => `${projectId}::${id}`;
 const rangeFor = (projectId) => IDBKeyRange.bound(`${projectId}::`, `${projectId}::￿`);
 
 export const KEYS = {
@@ -115,21 +113,55 @@ export async function list() {
   }
 }
 
-// ── Per-row subdomain records ──────────────────────────────────────────────
+// ── Chunked-blob subdomain records ─────────────────────────────────────────
+//
+// Records are stored as ~5000-record blobs (`subchunk:i`) instead of one row
+// per record. 100k individual IndexedDB puts took ~30s on import; ~20 blob puts
+// take ~2s, load stays fast, and the whole set writes in a single transaction.
+const REC_CHUNK = 5000;
+const chunkKey = (pid, i) => `${PREFIX}project:${pid}:subchunk:${i}`;
+const chunkMetaKey = (pid) => `${PREFIX}project:${pid}:subchunk-meta`;
 
-// All records for a project. Migrates a legacy single-blob `KEYS.subdomains`
-// value into rows on first access, then drops the blob (one-time, per project).
+// Pure (exported for testing): split records into fixed-size chunks.
+export function chunkRecords(records, size = REC_CHUNK) {
+  const out = [];
+  for (let i = 0; i < records.length; i += size) out.push(records.slice(i, i + size));
+  return out;
+}
+
+// All records for a project. Migrates legacy formats (single blob, or the
+// intermediate per-row store) into chunks on first access, then drops them.
 export async function loadRecords(projectId) {
   if (!projectId) return [];
   try {
-    const rows = await (await db()).getAll(SUBROWS, rangeFor(projectId));
-    if (rows.length) return rows;
+    const _t = performance.now();
+    const meta = await get(chunkMetaKey(projectId), null);
+    if (meta && meta.chunks > 0) {
+      const parts = await Promise.all(
+        Array.from({ length: meta.chunks }, (_, i) => get(chunkKey(projectId, i), []))
+      );
+      const out = [];
+      for (const p of parts) if (Array.isArray(p)) for (const r of p) out.push(r);
+      logPerf('load-records', { rows: out.length, getAllMs: Math.round(performance.now() - _t), migrated: false });
+      return out;
+    }
+    // Migrate a legacy single-blob dataset.
     const legacy = await get(KEYS.subdomains(projectId), null);
     if (Array.isArray(legacy) && legacy.length) {
-      await putRecords(projectId, legacy);
+      await saveRecords(projectId, legacy);
       await del(KEYS.subdomains(projectId));
+      logPerf('load-records', { rows: legacy.length, getAllMs: Math.round(performance.now() - _t), migrated: legacy.length });
       return legacy;
     }
+    // Migrate the intermediate per-row store.
+    const rows = await (await db()).getAll(SUBROWS, rangeFor(projectId));
+    if (rows.length) {
+      await saveRecords(projectId, rows);
+      await (await db()).delete(SUBROWS, rangeFor(projectId));
+      logPerf('load-records', { rows: rows.length, getAllMs: Math.round(performance.now() - _t), migrated: rows.length });
+      return rows;
+    }
+    logPerf('load-records', { rows: 0, getAllMs: Math.round(performance.now() - _t), migrated: false });
     return [];
   } catch (e) {
     console.error('storage.loadRecords failed', projectId, e);
@@ -137,71 +169,28 @@ export async function loadRecords(projectId) {
   }
 }
 
-// How many rows to write per transaction. Each chunk clones its rows on the
-// calling thread; awaiting between chunks yields to the browser so a 100k-row
-// write stays responsive (paints between slices) instead of freezing for
-// seconds. Not atomic across chunks — fine for import/edit persistence.
-const WRITE_CHUNK = 5000;
-
-async function putChunked(store, projectId, records) {
-  const database = await db();
-  for (let i = 0; i < records.length; i += WRITE_CHUNK) {
-    const tx = database.transaction(store, 'readwrite');
-    const end = Math.min(i + WRITE_CHUNK, records.length);
-    for (let j = i; j < end; j++) tx.store.put(records[j], rowKey(projectId, records[j].id));
-    await tx.done;
-  }
+// Write the full record set as chunk blobs in one transaction (fast bulk write),
+// then drop any leftover chunks from a previously-larger dataset.
+export async function saveRecords(projectId, records) {
+  const prevMeta = await get(chunkMetaKey(projectId), null);
+  const prevChunks = prevMeta ? prevMeta.chunks : 0;
+  const parts = chunkRecords(records);
+  const entries = parts.map((p, i) => [chunkKey(projectId, i), p]);
+  entries.push([chunkMetaKey(projectId), { chunks: parts.length, count: records.length }]);
+  await setMany(entries);
+  for (let i = parts.length; i < prevChunks; i++) await del(chunkKey(projectId, i));
 }
 
-// Bulk-write a full record set (used by migration + wholesale replaces like
-// loadSession). Does not remove rows that are absent — pair with a clear if the
-// set should be authoritative.
-export async function putRecords(projectId, records) {
-  await putChunked(SUBROWS, projectId, records);
-}
-
-// Pure diff (exported for testing): given the new record list and the map of
-// what's persisted, return which rows to put (new or identity-changed) and which
-// ids to delete (gone). `curr` is the id→record map to carry forward as the new
-// baseline. Getting this wrong deletes user data, so it has its own test.
-export function recordDelta(records, prevMap = new Map()) {
-  const curr = new Map();
-  const puts = [];
-  for (const r of records) {
-    curr.set(r.id, r);
-    if (prevMap.get(r.id) !== r) puts.push(r);
-  }
-  const deleteIds = [];
-  for (const id of prevMap.keys()) {
-    if (!curr.has(id)) deleteIds.push(id);
-  }
-  return { puts, deleteIds, curr };
-}
-
-// Incremental sync: write only rows whose object identity changed since the
-// last persisted map, delete rows no longer present. Returns the new id→record
-// map to carry forward. This is the write path that makes single-host edits
-// cheap instead of re-serializing the whole dataset.
-export async function syncRecords(projectId, records, prevMap = new Map()) {
-  const { puts, deleteIds, curr } = recordDelta(records, prevMap);
-  await putChunked(SUBROWS, projectId, puts);
-  if (deleteIds.length) {
-    const database = await db();
-    for (let i = 0; i < deleteIds.length; i += WRITE_CHUNK) {
-      const tx = database.transaction(SUBROWS, 'readwrite');
-      const end = Math.min(i + WRITE_CHUNK, deleteIds.length);
-      for (let j = i; j < end; j++) tx.store.delete(rowKey(projectId, deleteIds[j]));
-      await tx.done;
-    }
-  }
-  return curr;
-}
-
-// Delete every record row for a project (project delete / wipe).
+// Delete every stored record chunk for a project (project delete / wipe), plus
+// any un-migrated legacy formats.
 export async function deleteProjectRecords(projectId) {
   try {
-    await (await db()).delete(SUBROWS, rangeFor(projectId));
-    await del(KEYS.subdomains(projectId)); // drop any un-migrated legacy blob too
+    const meta = await get(chunkMetaKey(projectId), null);
+    const chunks = meta ? meta.chunks : 0;
+    const ops = [del(chunkMetaKey(projectId)), del(KEYS.subdomains(projectId))];
+    for (let i = 0; i < chunks; i++) ops.push(del(chunkKey(projectId, i)));
+    await Promise.all(ops);
+    try { await (await db()).delete(SUBROWS, rangeFor(projectId)); } catch { /* legacy per-row */ }
   } catch (e) {
     console.error('storage.deleteProjectRecords failed', projectId, e);
   }

@@ -15,7 +15,9 @@ function perfLogPlugin() {
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       try {
-        if (body.includes('"kind":"session-start"')) fs.writeFileSync(file, ''); // fresh run
+        // Append a marker on reload instead of truncating, so history survives
+        // page reloads (we were losing the import/error entries we needed).
+        if (body.includes('"kind":"session-start"')) fs.appendFileSync(file, '\n=== SESSION RELOAD ===\n');
         fs.appendFileSync(file, body);
       } catch { /* best effort */ }
       res.statusCode = 204;
