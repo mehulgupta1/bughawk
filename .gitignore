@@ -20,3 +20,12 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# large generated test fixtures (regenerate with test-data/generate.mjs)
+test-data/subdomains_100k.jsonl
+test-data/urls_100k.txt
+test-data/ports_50k.json
+test-data/assets_mixed_60k.txt
+test-data/bigscript.js
+test-data/nuclei_5k.jsonl
+test-data/wordlist_100k.txt
