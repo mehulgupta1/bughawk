@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { classifyLine, extractHost, normalizeValue, splitLines } from '../../lib/assets.js';
 import StatusBadge from '../SubdomainTab/StatusBadge.jsx';
 import { useActiveValue } from '../../hooks/useActiveValue.js';
+import { timed } from '../../lib/telemetry.js';
 
 // Per-project storage vault: three buckets of raw assets (subdomains / URLs / JS
 // files) with smart auto-routing, cross-tab send/pull, scope awareness, normalize
@@ -13,7 +14,7 @@ const SECTIONS = [
   { key: 'urls', label: 'URLs', icon: '🔗', ph: 'Paste URLs, one per line…' },
   { key: 'jsfiles', label: 'JS Files', icon: '📜', ph: 'Paste .js file URLs, one per line…' },
 ];
-const RENDER_CAP = 1000;
+const RENDER_CAP = 300;
 const EMPTY = { subdomains: [], urls: [], jsfiles: [], seen: {}, activity: [] };
 const BUCKET_LABEL = { subdomains: 'Subdomains', urls: 'URLs', jsfiles: 'JS Files' };
 const ACTIVITY_CAP = 50;
@@ -43,6 +44,9 @@ export default function AssetsTab({ assets, onSave, onCopyToast, subRecords: raw
   const [smartOpen, setSmartOpen] = useState(false);
 
   const ipCount = useMemo(() => new Set((subRecords || []).map((r) => r.ip).filter(Boolean)).size, [subRecords]);
+  // Map only the ACTIVE bucket (once per data/tab change), not all three on
+  // every render — and give AssetBucket a stable `items` reference.
+  const activeItems = useMemo(() => (active === 'ips' ? [] : bucketItems(data, active)), [data, active]);
 
   const saveBucket = (key, items) => onSave({ ...data, [key]: items });
 
@@ -65,13 +69,16 @@ export default function AssetsTab({ assets, onSave, onCopyToast, subRecords: raw
     return added.length;
   };
 
-  // Smart import: route each line to its bucket.
-  const smartImport = (text, src) => {
+  // Smart import: route each line to its bucket. Classify in chunks that yield
+  // to the browser so a 60k paste doesn't freeze the UI.
+  const smartImport = (text, src) => timed('Assets smart import', async () => {
     const lines = splitLines(text);
     const routed = { subdomains: [], urls: [], jsfiles: [] };
-    for (const l of lines) {
-      const k = classifyLine(l);
-      if (k) routed[k].push(l);
+    const CHUNK = 5000;
+    for (let i = 0; i < lines.length; i += CHUNK) {
+      const end = Math.min(i + CHUNK, lines.length);
+      for (let j = i; j < end; j++) { const k = classifyLine(lines[j]); if (k) routed[k].push(lines[j]); }
+      if (end < lines.length) await new Promise((r) => setTimeout(r));
     }
     const now = Date.now();
     const next = { ...data };
@@ -98,7 +105,7 @@ export default function AssetsTab({ assets, onSave, onCopyToast, subRecords: raw
     onCopyToast?.(
       `Routed: ${routed.subdomains.length} subdomains, ${routed.urls.length} URLs, ${routed.jsfiles.length} JS · ${total} new`
     );
-  };
+  });
 
   const importVault = (json) => {
     const next = { ...EMPTY, seen: {} };
@@ -128,7 +135,7 @@ export default function AssetsTab({ assets, onSave, onCopyToast, subRecords: raw
         {SECTIONS.map((s) => (
           <button key={s.key} className={`asset-tab${active === s.key ? ' active' : ''}`} onClick={() => setActive(s.key)}>
             <span>{s.icon} {s.label}</span>
-            <span className="asset-tab-count">{bucketItems(data, s.key).length.toLocaleString()}</span>
+            <span className="asset-tab-count">{(data[s.key]?.length || 0).toLocaleString()}</span>
           </button>
         ))}
         <button className={`asset-tab${active === 'ips' ? ' active' : ''}`} onClick={() => setActive('ips')}>
@@ -143,7 +150,7 @@ export default function AssetsTab({ assets, onSave, onCopyToast, subRecords: raw
         <AssetBucket
           key={active}
           section={SECTIONS.find((s) => s.key === active)}
-          items={bucketItems(data, active)}
+          items={activeItems}
           seenAt={data.seen?.[active] || 0}
           onSave={(items) => saveBucket(active, items)}
           onMarkSeen={() => onSave({ ...data, seen: { ...(data.seen || {}), [active]: Date.now() } })}

@@ -68,6 +68,12 @@ export function initTelemetry() {
   if (document.readyState === 'complete') logSiteLoad();
   else window.addEventListener('load', logSiteLoad, { once: true });
 
+  // Total IndexedDB usage — if this balloons over a session, saved-session blobs
+  // (full record copies) are bloating the DB and slowing every read.
+  navigator.storage?.estimate?.().then((e) => {
+    send({ kind: 'storage-estimate', usageMB: Math.round((e.usage || 0) / 1e6), quotaMB: Math.round((e.quota || 0) / 1e6) });
+  }).catch(() => {});
+
   window.addEventListener('error', (e) => send({
     kind: 'error',
     msg: String(e.message),
