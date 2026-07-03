@@ -64,6 +64,13 @@ export default function App() {
   const scopeStatus = useMemo(() => (host) => scopeOf(host, scopeRules), [scopeRules]);
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Keep heavy tabs mounted once visited (hide with display:none instead of
+  // unmounting), so re-opening is an instant CSS flip rather than a re-render
+  // over 50k/100k records. Still lazy — they load on first visit.
+  const [visited, setVisited] = useState(() => new Set(['dashboard']));
+  useEffect(() => {
+    setVisited((v) => (v.has(activeTab) ? v : new Set(v).add(activeTab)));
+  }, [activeTab]);
   // Tab switches render heavy tabs (tables, dork lists) — mark them as a
   // transition so React paints the click immediately instead of blocking the
   // interaction on the new tab's render. This is what fixes INP on nav clicks.
@@ -112,6 +119,21 @@ export default function App() {
     const t = setTimeout(() => { snapWorker.current.postMessage({ projectId: activeId }); }, 1200);
     return () => clearTimeout(t);
   }, [activeId, subs.records, ports.records]);
+
+  // Full project-load timing: from an active-project change until all of its
+  // data (subdomains + ports) has finished loading. Complements load-subs.
+  const projLoadStart = useRef(0);
+  useEffect(() => { projLoadStart.current = performance.now(); }, [activeId]);
+  useEffect(() => {
+    if (activeId && projLoadStart.current && !subs.isLoading && !ports.isLoading) {
+      logPerf('project-load', {
+        ms: Math.round(performance.now() - projLoadStart.current),
+        records: subs.records.length,
+        ports: ports.records.length,
+      });
+      projLoadStart.current = 0;
+    }
+  }, [activeId, subs.isLoading, ports.isLoading, subs.records.length, ports.records.length]);
 
   const showToast = useCallback((msg) => setToast(msg), []);
 
@@ -219,11 +241,12 @@ export default function App() {
                 Create your first project
               </button>
             </div>
-          ) : subs.isLoading ? (
-            <div className="loading-state">Loading project data…</div>
           ) : (
             <ErrorBoundary resetKey={activeTab}>
               <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
+                {subs.isLoading ? (
+                  <div className="loading-state">Loading project data…</div>
+                ) : (
                 <Dashboard
                   activeProjectId={activeId}
                   records={subs.records}
@@ -241,17 +264,20 @@ export default function App() {
                   portActivity={ports.activity}
                   assetActivity={assets.activity}
                 />
+                )}
               </div>
-              {activeTab === 'scope' && (
-                <LazyTab>
-                  <ScopeTab
-                    rules={scopeRules}
-                    onSaveRules={setScopeRules}
-                    subRecords={subs.records}
-                    portRecords={ports.records}
-                    onCopyToast={showToast}
-                  />
-                </LazyTab>
+              {visited.has('scope') && (
+                <div style={{ display: activeTab === 'scope' ? 'block' : 'none' }}>
+                  <LazyTab>
+                    <ScopeTab
+                      rules={scopeRules}
+                      onSaveRules={setScopeRules}
+                      subRecords={subs.records}
+                      portRecords={ports.records}
+                      onCopyToast={showToast}
+                    />
+                  </LazyTab>
+                </div>
               )}
               <div
                 className="tab-pane-fill"
@@ -269,22 +295,24 @@ export default function App() {
                   hasScope={scopeRules.length > 0}
                 />
               </div>
-              {activeTab === 'ports' && (
-                <LazyTab>
-                  <PortTab
-                    ports={ports}
-                    projectName={activeProject?.name}
-                    onCopyToast={showToast}
-                    scopeStatus={scopeStatus}
-                    hasScope={scopeRules.length > 0}
-                    subRecords={subs.records}
-                    onSendToSubdomains={async (hosts) => {
-                      const partials = (hosts || []).map((h) => ({ host: h, status: 'unknown', tech: [] }));
-                      const summary = await subs.importRecords(partials);
-                      showToast(`Sent ${summary.added} new host(s) to Subdomains`);
-                    }}
-                  />
-                </LazyTab>
+              {visited.has('ports') && (
+                <div style={{ display: activeTab === 'ports' ? 'block' : 'none' }}>
+                  <LazyTab>
+                    <PortTab
+                      ports={ports}
+                      projectName={activeProject?.name}
+                      onCopyToast={showToast}
+                      scopeStatus={scopeStatus}
+                      hasScope={scopeRules.length > 0}
+                      subRecords={subs.records}
+                      onSendToSubdomains={async (hosts) => {
+                        const partials = (hosts || []).map((h) => ({ host: h, status: 'unknown', tech: [] }));
+                        const summary = await subs.importRecords(partials);
+                        showToast(`Sent ${summary.added} new host(s) to Subdomains`);
+                      }}
+                    />
+                  </LazyTab>
+                </div>
               )}
               <div style={{ display: activeTab === 'urlparser' ? 'block' : 'none' }}>
                 <ReconUrlParser activeProjectId={activeId} active={activeTab === 'urlparser'} />
@@ -296,14 +324,16 @@ export default function App() {
                   onSendToSubdomains={sendToSubdomains}
                 />
               </div>
-              {activeTab === 'surface' && (
-                <LazyTab>
-                  <SurfaceTab
-                    activeProjectId={activeId}
-                    subs={subs.records}
-                    ports={ports.records}
-                  />
-                </LazyTab>
+              {visited.has('surface') && (
+                <div style={{ display: activeTab === 'surface' ? 'block' : 'none' }}>
+                  <LazyTab>
+                    <SurfaceTab
+                      activeProjectId={activeId}
+                      subs={subs.records}
+                      ports={ports.records}
+                    />
+                  </LazyTab>
+                </div>
               )}
               {activeTab === 'wordlists' && (
                 <LazyTab>
@@ -312,7 +342,11 @@ export default function App() {
               )}
               {activeTab === 'dorks' && <LazyTab><DorksTab defaultTarget={activeProject?.name || ''} /></LazyTab>}
               {activeTab === 'httpanalyzer' && <LazyTab><HttpAnalyzerTab /></LazyTab>}
-              {activeTab === 'techstack' && <LazyTab><TechStackTab records={subs.records} activeProjectId={activeId} /></LazyTab>}
+              {visited.has('techstack') && (
+                <div style={{ display: activeTab === 'techstack' ? 'block' : 'none' }}>
+                  <LazyTab><TechStackTab records={subs.records} activeProjectId={activeId} /></LazyTab>
+                </div>
+              )}
               {activeTab === 'findings' && (
                 <LazyTab>
                   <FindingsTab
@@ -332,22 +366,24 @@ export default function App() {
                   />
                 </LazyTab>
               )}
-              {activeTab === 'assets' && (
-                <LazyTab>
-                  <AssetsTab
-                    assets={assets}
-                    onSave={setAssets}
-                    onCopyToast={showToast}
-                    subRecords={subs.records}
-                    scopeStatus={scopeStatus}
-                    hasScope={scopeRules.length > 0}
-                    onSendToSubdomains={async (hosts) => {
-                      const partials = (hosts || []).map((h) => ({ host: h, status: 'unknown', tech: [] }));
-                      const summary = await subs.importRecords(partials);
-                      showToast(`Sent ${summary.added} new host(s) to Subdomains`);
-                    }}
-                  />
-                </LazyTab>
+              {visited.has('assets') && (
+                <div style={{ display: activeTab === 'assets' ? 'block' : 'none' }}>
+                  <LazyTab>
+                    <AssetsTab
+                      assets={assets}
+                      onSave={setAssets}
+                      onCopyToast={showToast}
+                      subRecords={subs.records}
+                      scopeStatus={scopeStatus}
+                      hasScope={scopeRules.length > 0}
+                      onSendToSubdomains={async (hosts) => {
+                        const partials = (hosts || []).map((h) => ({ host: h, status: 'unknown', tech: [] }));
+                        const summary = await subs.importRecords(partials);
+                        showToast(`Sent ${summary.added} new host(s) to Subdomains`);
+                      }}
+                    />
+                  </LazyTab>
+                </div>
               )}
               {activeTab === 'settings' && (
                 <LazyTab>

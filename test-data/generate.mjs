@@ -50,13 +50,21 @@ w('urls_100k.txt', (out) => {
   }
 });
 
-// 3) Ports — masscan/naabu JSON lines, 50k host:port pairs
+// 3) Ports — masscan/naabu JSON lines, 50k host:port pairs. Services sit on
+// their STANDARD ports (realistic → varied severities), with ~15% on a
+// non-standard port so the anomaly detector has something real to flag.
 w('ports_50k.json', (out) => {
-  const svc = ['ssh', 'http', 'https', 'ftp', 'mysql', 'redis', 'smtp', 'rdp', 'telnet', 'postgres'];
-  const ports = [22, 80, 443, 21, 3306, 6379, 25, 3389, 23, 5432, 8080, 8443, 9200];
+  const SVC_PORT = [
+    ['http', 80], ['https', 443], ['http', 8080], ['https', 8443], ['ssh', 22],
+    ['ftp', 21], ['mysql', 3306], ['redis', 6379], ['smtp', 25], ['rdp', 3389],
+    ['telnet', 23], ['postgres', 5432], ['dns', 53], ['http', 8000],
+  ];
+  const ODD = [8081, 9090, 7001, 5000, 3000, 1234, 4444];
   for (let i = 0; i < 50000; i++) {
     const ip = `10.${rand(255)}.${rand(255)}.${rand(255)}`;
-    out(JSON.stringify({ ip, port: pick(ports), service: pick(svc) }) + '\n');
+    const [service, stdPort] = pick(SVC_PORT);
+    const port = rand(100) < 85 ? stdPort : pick(ODD);
+    out(JSON.stringify({ ip, port, service }) + '\n');
   }
 });
 

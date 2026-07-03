@@ -55,14 +55,20 @@ function SubdomainTab({
 
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
+  // "Sticky active": skip the heavy 100k pipeline until this tab is first opened
+  // (keeps startup fast), then keep computing so RE-opening it is instant instead
+  // of re-filtering/re-sorting 100k on every switch.
+  const [everActive, setEverActive] = useState(active);
+  useEffect(() => { if (active) setEverActive(true); }, [active]);
+
   // FIX: newCutoff was computed on EVERY render (Date.now() changes each time),
   // causing counts + filtered memos to recompute on EVERY render.
   // Now computed once on mount — doesn't meaningfully change within a session.
   const newCutoff = useMemo(() => Date.now() - NEW_WINDOW_MS, []);
 
   // Available data columns adapt to the project's actual data. Skip the scan
-  // while this tab is hidden — no point computing columns for an invisible table.
-  const available = useMemo(() => (active ? getAvailableColumns(records) : []), [active, records]);
+  // until the tab has been opened at least once.
+  const available = useMemo(() => (everActive ? getAvailableColumns(records) : []), [everActive, records]);
   const visibleCols = useMemo(
     () => available.filter((c) => visible.has(c.key)),
     [available, visible]
@@ -76,9 +82,8 @@ function SubdomainTab({
   //
   // Step 1: base = search + auto-filter-oos + focus filter
   const base = useMemo(() => {
-    // Hidden tab: don't filter/sort 100k rows in the background. Recomputes the
-    // moment the tab becomes active (deps include `active`).
-    if (!active) return [];
+    // Skip until first opened; then stay computed so re-opening is instant.
+    if (!everActive) return [];
     const q = debouncedQuery.trim().toLowerCase();
     const focus = focusNewIds && focusNewIds.size ? focusNewIds : null;
     const scopeFilter = autoFilter && hasScope;
@@ -90,7 +95,7 @@ function SubdomainTab({
       if (q && !r.host.includes(q)) return false;
       return true;
     });
-  }, [active, records, debouncedQuery, autoFilter, focusNewIds, hasScope, scopeStatus]);
+  }, [everActive, records, debouncedQuery, autoFilter, focusNewIds, hasScope, scopeStatus]);
 
   // Step 2: counts from base (for filter pills) — does NOT depend on selection
   const counts = useMemo(() => {

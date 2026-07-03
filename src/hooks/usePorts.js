@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as storage from '../lib/storage.js';
 import { timed } from '../lib/telemetry.js';
+import { enrich } from '../lib/portintel.js';
 
 const { KEYS } = storage;
 const ACTIVITY_CAP = 50;
@@ -155,12 +156,12 @@ export function usePorts(projectId, onMeta) {
     if (!projectId) return { added: 0, updated: 0, skipped: 0 };
     const { records: next, entry, summary } = mergeImport(recordsRef.current, partials);
     const nextActivity = [entry, ...activity].slice(0, ACTIVITY_CAP);
-    await storage.setMany([
-      [KEYS.ports(projectId), next],
-      [KEYS.portActivity(projectId), nextActivity],
-    ]);
+    // Show immediately; the debounced persist effect writes records in the
+    // background, so importing into a large dataset doesn't block on rewriting
+    // the whole ports blob.
     setRecords(next);
     setActivity(nextActivity);
+    storage.set(KEYS.portActivity(projectId), nextActivity);
     return summary;
   }), [projectId, activity]);
 
@@ -271,8 +272,13 @@ export function usePorts(projectId, onMeta) {
     }
   }, [projectId]);
 
+  // Enrich once here (not on every PortTab mount). PortTab is lazy, so it
+  // unmounts on tab switch — computing this in the component re-ran ~20 rules ×
+  // 50k rows every time you opened the tab. Memoized here it survives reopens.
+  const enriched = useMemo(() => records.map((r) => ({ r, e: enrich(r) })), [records]);
+
   return {
-    records, activity, sessions, isLoading,
+    records, enriched, activity, sessions, isLoading,
     importRecords, applyCve, loadSession,
     saveSnapshot, reloadSnapshot, deleteSnapshot, renameSnapshot,
     toggleTag, setNote, setAudit, toggleLabel, bulkSetAudit, deleteMany, clearAll,

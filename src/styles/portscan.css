@@ -56,9 +56,11 @@
 .port-row {
   display: grid;
   grid-template-columns: 34px 84px minmax(160px, 1.4fr) 110px minmax(160px, 1.6fr) minmax(150px, 1fr) 70px;
-  align-items: center; gap: 8px; padding: 7px 12px;
+  align-items: center; gap: 8px; padding: 0 14px; height: 42px; box-sizing: border-box; overflow: hidden;
   border-bottom: 1px solid var(--border-subtle); cursor: pointer; font-size: 13px;
 }
+/* Zebra striping — neutral tint that reads in both light and dark themes. */
+.port-row-alt { background: rgba(128, 128, 128, 0.06); }
 .port-row:hover { background: var(--surface-hover); }
 .port-row-head {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
@@ -67,8 +69,10 @@
 .port-row-head .sortable { cursor: pointer; }
 .port-row.row-danger { box-shadow: inset 3px 0 0 var(--sev-critical); }
 .pc-host .star { color: var(--status-4xx); margin-right: 4px; }
+/* Keep cells to one line so rows never exceed the virtualized row height. */
+.pc-host, .pc-svc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .state-tag { color: var(--text3); font-size: 11px; }
-.pc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.pc-tags { display: flex; flex-wrap: nowrap; gap: 4px; overflow: hidden; }
 .pc-act { display: flex; gap: 4px; justify-content: flex-end; }
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 14px; padding: 2px 4px; }
 .icon-btn:hover { color: var(--text); }

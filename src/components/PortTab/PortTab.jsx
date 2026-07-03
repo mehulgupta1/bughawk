@@ -4,7 +4,7 @@ import PortDetail from './PortDetail.jsx';
 import PortSessionsModal from './PortSessionsModal.jsx';
 import PortDiffModal from './PortDiffModal.jsx';
 import VirtualTable from '../SubdomainTab/VirtualTable.jsx';
-import { enrich, attackSurfaceScore, scoreBand, SEVERITIES, SEVERITY_RANK, CATEGORIES } from '../../lib/portintel.js';
+import { attackSurfaceScore, scoreBand, SEVERITIES, SEVERITY_RANK, CATEGORIES } from '../../lib/portintel.js';
 import { enrichRecords } from '../../lib/cve.js';
 import { exportCsv, exportJson, exportMarkdown, exportPlaybook } from '../../lib/portexporter.js';
 
@@ -18,7 +18,7 @@ function useDebounced(value, delay) {
 
 export default function PortTab({ ports, projectName, onCopyToast, subRecords, onSendToSubdomains, scopeStatus, hasScope }) {
   const {
-    records, importRecords, applyCve,
+    records, enriched, importRecords, applyCve,
     toggleTag, setAudit, deleteMany, bulkSetAudit, clearAll,
   } = ports;
 
@@ -28,7 +28,7 @@ export default function PortTab({ ports, projectName, onCopyToast, subRecords, o
   const [catFilter, setCatFilter] = useState('all');
   const [scopeView, setScopeView] = useState('auto'); // auto(hide out) | all | in | out | unknown
   const [flag, setFlag] = useState(null); // null | 'kev' | 'cve' | 'danger'
-  const [groupMode, setGroupMode] = useState('host'); // 'host' | 'cat' | 'flat'
+  const [groupMode, setGroupMode] = useState('host'); // 'host' (one card per host) | 'flat' | 'cat'
   const [sort, setSort] = useState({ key: 'severity', dir: 'desc' });
   const [checked, setChecked] = useState(() => new Set());
   const [detail, setDetail] = useState(null);
@@ -44,9 +44,6 @@ export default function PortTab({ ports, projectName, onCopyToast, subRecords, o
   }, [subRecords]);
 
   const dq = useDebounced(query, SEARCH_DEBOUNCE_MS);
-
-  // Enrich every record once per records change (pure, cheap, memoized).
-  const enriched = useMemo(() => records.map((r) => ({ r, e: enrich(r) })), [records]);
 
   const score = useMemo(() => attackSurfaceScore(enriched.map((x) => x.e)), [enriched]);
   const band = scoreBand(score);
@@ -95,6 +92,10 @@ export default function PortTab({ ports, projectName, onCopyToast, subRecords, o
 
   useEffect(() => { setChecked(new Set()); }, [dq, sevFilter, stateFilter, catFilter, flag]);
 
+  // Pagination — reset to page 1 whenever the result set / view changes.
+  const [portPage, setPortPage] = useState(0);
+  useEffect(() => { setPortPage(0); }, [dq, sevFilter, stateFilter, catFilter, flag, sort, scopeView, groupMode]);
+
   const onSort = useCallback((key) => {
     setSort((p) => (p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'severity' ? 'desc' : 'asc' }));
   }, []);
@@ -139,6 +140,14 @@ export default function PortTab({ ports, projectName, onCopyToast, subRecords, o
     }
     return entries;
   }, [filtered, groupMode]);
+
+  // Paginate whichever list the current view shows: 50 host cards/page, or 100
+  // flat rows/page. (Category view has few groups — no pagination.)
+  const PAGE = groupMode === 'host' ? 50 : 100;
+  const pageItems = groupMode === 'host' ? groups : (groupMode === 'flat' ? filtered : null);
+  const pageCount = pageItems ? Math.max(1, Math.ceil(pageItems.length / PAGE)) : 1;
+  const safePage = Math.min(portPage, pageCount - 1);
+  const pageSlice = pageItems ? pageItems.slice(safePage * PAGE, safePage * PAGE + PAGE) : null;
 
   const exportTargets = () => (checked.size ? records.filter((r) => checked.has(r.id)) : filtered.map((x) => x.r));
 
@@ -230,16 +239,11 @@ export default function PortTab({ ports, projectName, onCopyToast, subRecords, o
           {filtered.length === 0 ? (
             <div className="glass-card empty-state"><div className="empty-sub">No ports match the current filters.</div></div>
           ) : groupMode === 'host' ? (
-            <>
-              {groups.slice(0, 300).map(([host, items]) => (
-                <HostGroup key={host} host={host} items={items} sub={subIndex.get(host)}
-                  scopeBadge={hasScope ? scopeStatus(host) : null}
-                  {...{ checked, toggleCheck, copyVal, toggleTag, setDetail }} />
-              ))}
-              {groups.length > 300 && (
-                <div className="glass-card empty-state"><div className="empty-sub">Showing 300 of {groups.length.toLocaleString()} host groups — narrow with search/filters, or use the flat table.</div></div>
-              )}
-            </>
+            pageSlice.map(([host, items]) => (
+              <HostGroup key={host} host={host} items={items} sub={subIndex.get(host)}
+                scopeBadge={hasScope ? scopeStatus(host) : null}
+                {...{ checked, toggleCheck, copyVal, toggleTag, setDetail }} />
+            ))
           ) : groupMode === 'cat' ? (
             groups.map(([cat, items]) => (
               <div key={cat} className="port-group">
@@ -248,7 +252,17 @@ export default function PortTab({ ports, projectName, onCopyToast, subRecords, o
               </div>
             ))
           ) : (
-            <PortTable rows={filtered} {...{ checked, toggleCheck, onSort, sort, copyVal, toggleTag, setAudit, setDetail }} />
+            <PortTable rows={pageSlice} {...{ checked, toggleCheck, onSort, sort, copyVal, toggleTag, setAudit, setDetail }} />
+          )}
+
+          {pageCount > 1 && groupMode !== 'cat' && (
+            <div className="sf-pager" style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', padding: '12px 0', fontSize: 12, color: 'var(--text2)' }}>
+              <button className="btn btn-ghost btn-sm" disabled={safePage === 0} onClick={() => setPortPage(0)}>« First</button>
+              <button className="btn btn-ghost btn-sm" disabled={safePage === 0} onClick={() => setPortPage((p) => p - 1)}>‹ Prev</button>
+              <span>Page {safePage + 1} / {pageCount} · {pageItems.length.toLocaleString()} {groupMode === 'host' ? 'hosts' : 'ports'}</span>
+              <button className="btn btn-ghost btn-sm" disabled={safePage >= pageCount - 1} onClick={() => setPortPage((p) => p + 1)}>Next ›</button>
+              <button className="btn btn-ghost btn-sm" disabled={safePage >= pageCount - 1} onClick={() => setPortPage(pageCount - 1)}>Last »</button>
+            </div>
           )}
         </>
       )}
@@ -371,12 +385,12 @@ function PortTable({ rows, checked, toggleCheck, onSort, sort, copyVal, toggleTa
   return (
     <VirtualTable
       items={rows}
-      rowHeight={34}
+      rowHeight={42}
       minWidth={880}
       header={header}
       getKey={({ r }) => r.id}
-      renderRow={({ r, e }) => (
-        <div className={`port-row${e.dangerousFlags.length ? ' row-danger' : ''}`} onClick={() => setDetail(r)}>
+      renderRow={({ r, e }, i) => (
+        <div className={`port-row${e.dangerousFlags.length ? ' row-danger' : ''}${i % 2 ? ' port-row-alt' : ''}`} onClick={() => setDetail(r)}>
           <span className="pc-cb" onClick={(ev) => ev.stopPropagation()}>
             <input type="checkbox" className="row-cb" checked={checked.has(r.id)} onChange={() => toggleCheck(r.id)} />
           </span>

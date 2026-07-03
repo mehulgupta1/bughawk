@@ -53,6 +53,21 @@ export function initTelemetry() {
   enabled = true;
   send({ kind: 'session-start', ua: navigator.userAgent, url: location.href });
 
+  // Site load: how long until the app's JS is running (boot), and full page load
+  // (TTFB / DOM ready / load event). In dev this includes Vite compiling chunks.
+  send({ kind: 'site-boot', ms: Math.round(performance.now()) });
+  const logSiteLoad = () => {
+    const n = performance.getEntriesByType?.('navigation')?.[0];
+    send({
+      kind: 'site-load',
+      ms: Math.round(n?.loadEventEnd || performance.now()),
+      ttfb: Math.round(n?.responseStart || 0),
+      domReady: Math.round(n?.domContentLoadedEventEnd || 0),
+    });
+  };
+  if (document.readyState === 'complete') logSiteLoad();
+  else window.addEventListener('load', logSiteLoad, { once: true });
+
   window.addEventListener('error', (e) => send({
     kind: 'error',
     msg: String(e.message),
