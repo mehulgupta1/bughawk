@@ -61,6 +61,7 @@ function jsProxyPlugin() {
 }
 
 export default defineConfig({
+  base: '/bughawk/', // GitHub Pages base path
   plugins: [react(), jsProxyPlugin(), perfLogPlugin()],
   build: {
     rollupOptions: {
