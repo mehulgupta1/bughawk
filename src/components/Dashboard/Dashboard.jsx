@@ -36,7 +36,8 @@ function StatCard({ def, value }) {
 }
 
 function Dashboard({
-  activeProjectId, records: rawRecords, active = true, activity, projectName, createdAt, theme,
+  activeProjectId, records: rawRecords, active = true, dataLoading = false, cachedCounts = null,
+  activity, projectName, createdAt, theme,
   notes, onNotesChange, onViewNew,
   portRecords: rawPortRecords, scopeRules, assets, onNavigate,
   portActivity, assetActivity,
@@ -103,6 +104,17 @@ function Dashboard({
   }, [activity, portActivity, assetActivity]);
 
   const { counts, stats } = useMemo(() => {
+    // While the 100k records are still loading, show the project's cached
+    // status breakdown so the dashboard is populated instantly instead of
+    // blank-then-pop. Real records replace this the moment they arrive.
+    if (records.length === 0 && dataLoading && cachedCounts?.breakdown) {
+      const b = cachedCounts.breakdown;
+      const c = { '2xx': b['2xx'] || 0, '3xx': b['3xx'] || 0, '4xx': b['4xx'] || 0, '5xx': b['5xx'] || 0, other: b.other || 0 };
+      return {
+        counts: c,
+        stats: { total: cachedCounts.subdomainCount || 0, live: c['2xx'], redirects: c['3xx'], notable: c['4xx'] + c['5xx'], vulnerable: 0, flagged: 0 },
+      };
+    }
     const c = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, other: 0 };
     let vulnerable = 0;
     let flagged = 0;
@@ -115,7 +127,7 @@ function Dashboard({
       counts: c,
       stats: { total: records.length, live: c['2xx'], redirects: c['3xx'], notable: c['4xx'] + c['5xx'], vulnerable, flagged },
     };
-  }, [records]);
+  }, [records, dataLoading, cachedCounts]);
 
   return (
     <div className="tab-content">

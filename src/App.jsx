@@ -244,13 +244,15 @@ export default function App() {
           ) : (
             <ErrorBoundary resetKey={activeTab}>
               <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
-                {subs.isLoading ? (
-                  <div className="loading-state">Loading project data…</div>
-                ) : (
+                {/* Render immediately — no full-screen block. Stats count up from
+                    the cached project totals to the real numbers as the 100k
+                    records finish loading, so the landing is instant. */}
                 <Dashboard
                   activeProjectId={activeId}
                   records={subs.records}
                   active={activeTab === 'dashboard'}
+                  dataLoading={subs.isLoading}
+                  cachedCounts={activeProject}
                   activity={subs.activity}
                   projectName={activeProject?.name}
                   createdAt={activeProject?.createdAt}
@@ -265,7 +267,6 @@ export default function App() {
                   portActivity={ports.activity}
                   assetActivity={assets.activity}
                 />
-                )}
               </div>
               {visited.has('scope') && (
                 <div style={{ display: activeTab === 'scope' ? 'block' : 'none' }}>
