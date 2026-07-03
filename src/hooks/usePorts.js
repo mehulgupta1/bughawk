@@ -55,53 +55,65 @@ function pushHistory(history, state, now) {
   return next.length > HISTORY_CAP ? next.slice(next.length - HISTORY_CAP) : next;
 }
 
-// Pure import/merge: dedupe by host:port/proto, track state history, build the
-// activity entry (closed-port detection included). Exported for testing.
-export function mergeImport(prevRecords, partials, now = Date.now()) {
-  let added = 0;
-  let updated = 0;
-  let skipped = 0;
-  const newIds = [];
-  const seenKeys = new Set();
-
-  const byKey = new Map();
-  for (const r of prevRecords) byKey.set(r.key, r);
-
-  for (const p of partials) {
-    if (!p.host || p.port == null) { skipped++; continue; }
-    const k = portKey(p);
-    seenKeys.add(k);
-    const existing = byKey.get(k);
-    if (!existing) {
-      const rec = makeRecord(p, now);
-      byKey.set(k, rec);
-      newIds.push(rec.id);
-      added++;
-    } else {
-      byKey.set(k, {
-        ...existing,
-        ip: p.ip ?? existing.ip,
-        state: p.state || existing.state,
-        service: p.service || existing.service,
-        product: p.product || existing.product,
-        version: p.version || existing.version,
-        cpe: p.cpe || existing.cpe,
-        banner: p.banner || existing.banner,
-        scripts: { ...(existing.scripts || {}), ...(p.scripts || {}) },
-        history: pushHistory(existing.history, p.state || existing.state, now),
-      });
-      updated++;
-    }
+// Merge one partial into the byKey map. Shared by the sync + chunked paths.
+function applyPartial(byKey, p, now, ctx) {
+  if (!p.host || p.port == null) { ctx.skipped++; return; }
+  const existing = byKey.get(portKey(p));
+  if (!existing) {
+    const rec = makeRecord(p, now);
+    byKey.set(rec.key, rec);
+    ctx.newIds.push(rec.id);
+    ctx.added++;
+  } else {
+    byKey.set(existing.key, {
+      ...existing,
+      ip: p.ip ?? existing.ip,
+      state: p.state || existing.state,
+      service: p.service || existing.service,
+      product: p.product || existing.product,
+      version: p.version || existing.version,
+      cpe: p.cpe || existing.cpe,
+      banner: p.banner || existing.banner,
+      scripts: { ...(existing.scripts || {}), ...(p.scripts || {}) },
+      history: pushHistory(existing.history, p.state || existing.state, now),
+    });
+    ctx.updated++;
   }
+}
 
+function buildResult(byKey, ctx, total, now) {
   const records = Array.from(byKey.values());
   const entry = {
-    id: uid(), at: now, added, updated, skipped,
-    total: partials.length, newIds: newIds.slice(0, 500),
+    id: uid(), at: now, added: ctx.added, updated: ctx.updated, skipped: ctx.skipped,
+    total, newIds: ctx.newIds.slice(0, 500),
     openCount: records.filter((r) => (r.state || '').startsWith('open')).length,
     totalCount: records.length,
   };
-  return { records, entry, summary: { added, updated, skipped } };
+  return { records, entry, summary: { added: ctx.added, updated: ctx.updated, skipped: ctx.skipped } };
+}
+
+// Chunked, async merge that yields between batches so a 50k import doesn't
+// freeze the UI. Same result as mergeImport, just cooperative.
+export async function mergeImportChunked(prevRecords, partials, { chunk = 4000, now = Date.now() } = {}) {
+  const byKey = new Map();
+  for (const r of prevRecords) byKey.set(r.key, r);
+  const ctx = { added: 0, updated: 0, skipped: 0, newIds: [] };
+  for (let i = 0; i < partials.length; i += chunk) {
+    const end = Math.min(i + chunk, partials.length);
+    for (let j = i; j < end; j++) applyPartial(byKey, partials[j], now, ctx);
+    if (end < partials.length) await new Promise((r) => setTimeout(r)); // yield to the browser
+  }
+  return buildResult(byKey, ctx, partials.length, now);
+}
+
+// Pure import/merge: dedupe by host:port/proto, track state history, build the
+// activity entry. Exported for testing.
+export function mergeImport(prevRecords, partials, now = Date.now()) {
+  const byKey = new Map();
+  for (const r of prevRecords) byKey.set(r.key, r);
+  const ctx = { added: 0, updated: 0, skipped: 0, newIds: [] };
+  for (const p of partials) applyPartial(byKey, p, now, ctx);
+  return buildResult(byKey, ctx, partials.length, now);
 }
 
 // Manages port records + activity log for ONE active project. Mirrors
@@ -154,7 +166,8 @@ export function usePorts(projectId, onMeta) {
 
   const importRecords = useCallback((partials) => timed(`Import ports (${(partials || []).length} rows)`, async () => {
     if (!projectId) return { added: 0, updated: 0, skipped: 0 };
-    const { records: next, entry, summary } = mergeImport(recordsRef.current, partials);
+    // Chunked so building 50k records yields to the browser instead of freezing.
+    const { records: next, entry, summary } = await mergeImportChunked(recordsRef.current, partials);
     const nextActivity = [entry, ...activity].slice(0, ACTIVITY_CAP);
     // Show immediately; the debounced persist effect writes records in the
     // background, so importing into a large dataset doesn't block on rewriting
