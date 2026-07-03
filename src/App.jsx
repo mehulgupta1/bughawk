@@ -250,6 +250,7 @@ export default function App() {
                 <Dashboard
                   activeProjectId={activeId}
                   records={subs.records}
+                  active={activeTab === 'dashboard'}
                   activity={subs.activity}
                   projectName={activeProject?.name}
                   createdAt={activeProject?.createdAt}
@@ -344,7 +345,7 @@ export default function App() {
               {activeTab === 'httpanalyzer' && <LazyTab><HttpAnalyzerTab /></LazyTab>}
               {visited.has('techstack') && (
                 <div style={{ display: activeTab === 'techstack' ? 'block' : 'none' }}>
-                  <LazyTab><TechStackTab records={subs.records} activeProjectId={activeId} /></LazyTab>
+                  <LazyTab><TechStackTab records={subs.records} active={activeTab === 'techstack'} activeProjectId={activeId} /></LazyTab>
                 </div>
               )}
               {activeTab === 'findings' && (
@@ -374,6 +375,7 @@ export default function App() {
                       onSave={setAssets}
                       onCopyToast={showToast}
                       subRecords={subs.records}
+                      tabActive={activeTab === 'assets'}
                       scopeStatus={scopeStatus}
                       hasScope={scopeRules.length > 0}
                       onSendToSubdomains={async (hosts) => {

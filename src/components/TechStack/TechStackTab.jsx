@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import { detectFromResponse, detectFromRecord, STACK_CATEGORIES } from '../../lib/techstack.js';
 import { get, KEYS } from '../../lib/storage.js';
 import { hostOf } from '../../lib/graph.js';
+import { useActiveValue } from '../../hooks/useActiveValue.js';
 
 const CAT_META = {
   frontend: ['🎨', 'Frontend'], backend: ['⚙️', 'Backend'], database: ['🗄️', 'Database'],
@@ -9,7 +10,10 @@ const CAT_META = {
   cloud: ['☁️', 'Cloud'], analytics: ['📊', 'Analytics / 3rd-party'],
 };
 
-const TechStackTab = memo(function TechStackTab({ records = [], activeProjectId = 'default' }) {
+const TechStackTab = memo(function TechStackTab({ records: rawRecords = [], active = true, activeProjectId = 'default' }) {
+  // Freeze while hidden (kept-mounted) so a background load/import doesn't
+  // re-aggregate tech over 100k hosts off-screen.
+  const records = useActiveValue(rawRecords, active);
   const [raw, setRaw] = useState('');
   const [host, setHost] = useState('');
   const [result, setResult] = useState(null);

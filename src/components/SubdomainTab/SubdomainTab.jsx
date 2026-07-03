@@ -11,6 +11,7 @@ import DataRow, { TableHeader, tableMinWidth } from './DataRow.jsx';
 import { exportTxt, exportCsv } from '../../lib/exporter.js';
 import { getAvailableColumns, DEFAULT_VISIBLE } from '../../lib/columns.js';
 import { matchKeyword } from '../../lib/smartflag.js';
+import { useActiveValue } from '../../hooks/useActiveValue.js';
 
 const PAGE_SIZE = 100;
 const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -55,25 +56,24 @@ function SubdomainTab({
 
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
-  // "Sticky active": skip the heavy 100k pipeline until this tab is first opened
-  // (keeps startup fast), then keep computing so RE-opening it is instant instead
-  // of re-filtering/re-sorting 100k on every switch.
-  const [everActive, setEverActive] = useState(active);
-  useEffect(() => { if (active) setEverActive(true); }, [active]);
+  // Freeze the heavy inputs while this tab is hidden (it stays mounted): a
+  // background load/import won't recompute the 100k pipeline off-screen; it
+  // refreshes when the tab is shown again. Switching back with unchanged data
+  // is instant (same reference → memos cached).
+  const recs = useActiveValue(records, active);
 
   // FIX: newCutoff was computed on EVERY render (Date.now() changes each time),
   // causing counts + filtered memos to recompute on EVERY render.
   // Now computed once on mount — doesn't meaningfully change within a session.
   const newCutoff = useMemo(() => Date.now() - NEW_WINDOW_MS, []);
 
-  // Available data columns adapt to the project's actual data. Skip the scan
-  // until the tab has been opened at least once.
-  const available = useMemo(() => (everActive ? getAvailableColumns(records) : []), [everActive, records]);
+  // Available data columns adapt to the project's actual data.
+  const available = useMemo(() => getAvailableColumns(recs), [recs]);
   const visibleCols = useMemo(
     () => available.filter((c) => visible.has(c.key)),
     [available, visible]
   );
-  const hasIp = useMemo(() => records.some((r) => r.ip), [records]);
+  const hasIp = useMemo(() => recs.some((r) => r.ip), [recs]);
 
   // ─── DATA PIPELINE (matches the HTML version's approach) ───
   //
@@ -82,20 +82,18 @@ function SubdomainTab({
   //
   // Step 1: base = search + auto-filter-oos + focus filter
   const base = useMemo(() => {
-    // Skip until first opened; then stay computed so re-opening is instant.
-    if (!everActive) return [];
     const q = debouncedQuery.trim().toLowerCase();
     const focus = focusNewIds && focusNewIds.size ? focusNewIds : null;
     const scopeFilter = autoFilter && hasScope;
-    if (!q && !autoFilter && !focus) return records;
-    return records.filter((r) => {
+    if (!q && !autoFilter && !focus) return recs;
+    return recs.filter((r) => {
       if (focus && !focus.has(r.id)) return false;
       if (autoFilter && r.tags && r.tags.includes('oos')) return false;
       if (scopeFilter && scopeStatus(r.host) === 'out') return false;
       if (q && !r.host.includes(q)) return false;
       return true;
     });
-  }, [everActive, records, debouncedQuery, autoFilter, focusNewIds, hasScope, scopeStatus]);
+  }, [recs, debouncedQuery, autoFilter, focusNewIds, hasScope, scopeStatus]);
 
   // Step 2: counts from base (for filter pills) — does NOT depend on selection
   const counts = useMemo(() => {

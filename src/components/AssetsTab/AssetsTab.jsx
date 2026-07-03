@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { classifyLine, extractHost, normalizeValue, splitLines } from '../../lib/assets.js';
 import StatusBadge from '../SubdomainTab/StatusBadge.jsx';
+import { useActiveValue } from '../../hooks/useActiveValue.js';
 
 // Per-project storage vault: three buckets of raw assets (subdomains / URLs / JS
 // files) with smart auto-routing, cross-tab send/pull, scope awareness, normalize
@@ -33,7 +34,10 @@ function bucketItems(data, key) {
   return (data[key] || []).map(toItem);
 }
 
-export default function AssetsTab({ assets, onSave, onCopyToast, subRecords, onSendToSubdomains, scopeStatus, hasScope }) {
+export default function AssetsTab({ assets, onSave, onCopyToast, subRecords: rawSubRecords, tabActive = true, onSendToSubdomains, scopeStatus, hasScope }) {
+  // Freeze while hidden (kept-mounted) so a background load/import doesn't
+  // recompute dead-endpoint detection over 100k subdomains off-screen.
+  const subRecords = useActiveValue(rawSubRecords || [], tabActive);
   const data = assets || EMPTY;
   const [active, setActive] = useState('subdomains');
   const [smartOpen, setSmartOpen] = useState(false);

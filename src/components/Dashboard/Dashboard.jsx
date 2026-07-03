@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { get, KEYS } from '../../lib/storage.js';
 import { getSevColor } from '../UrlParser/engine.js';
 import { featureLabel } from '../../lib/features.js';
+import { useActiveValue } from '../../hooks/useActiveValue.js';
 
 import DonutChart from './DonutChart.jsx';
 import Heatmap from './Heatmap.jsx';
@@ -35,11 +36,15 @@ function StatCard({ def, value }) {
 }
 
 function Dashboard({
-  activeProjectId, records, activity, projectName, createdAt, theme,
+  activeProjectId, records: rawRecords, active = true, activity, projectName, createdAt, theme,
   notes, onNotesChange, onViewNew,
-  portRecords, scopeRules, assets, onNavigate,
+  portRecords: rawPortRecords, scopeRules, assets, onNavigate,
   portActivity, assetActivity,
 }) {
+  // Freeze while hidden (always-mounted tab) so a background load/import doesn't
+  // recompute the dashboard stats over 100k/50k records off-screen.
+  const records = useActiveValue(rawRecords, active);
+  const portRecords = useActiveValue(rawPortRecords, active);
   const [notebook, setNotebook] = useState([]);
   useEffect(() => {
     let cancelled = false;
