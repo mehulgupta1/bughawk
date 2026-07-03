@@ -1,0 +1,13 @@
+GET /api/account HTTP/1.1
+Host: target.com
+Cookie: session=abcdef123456; token=AKIAIOSFODNN7EXAMPLE
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig
+
+HTTP/1.1 200 OK
+Server: nginx/1.18.0
+Access-Control-Allow-Origin: *
+Set-Cookie: session=xyz; path=/
+X-Powered-By: PHP/7.4.3
+Content-Type: application/json
+
+{"user":"admin","apiKey":"AIzaSyA-1234567890abcdefghijklmnop","internal_ip":"10.0.0.5"}

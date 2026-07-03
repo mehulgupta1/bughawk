@@ -3,6 +3,7 @@ import PortImportPanel from './PortImportPanel.jsx';
 import PortDetail from './PortDetail.jsx';
 import PortSessionsModal from './PortSessionsModal.jsx';
 import PortDiffModal from './PortDiffModal.jsx';
+import VirtualTable from '../SubdomainTab/VirtualTable.jsx';
 import { enrich, attackSurfaceScore, scoreBand, SEVERITIES, SEVERITY_RANK, CATEGORIES } from '../../lib/portintel.js';
 import { enrichRecords } from '../../lib/cve.js';
 import { exportCsv, exportJson, exportMarkdown, exportPlaybook } from '../../lib/portexporter.js';
@@ -229,11 +230,16 @@ export default function PortTab({ ports, projectName, onCopyToast, subRecords, o
           {filtered.length === 0 ? (
             <div className="glass-card empty-state"><div className="empty-sub">No ports match the current filters.</div></div>
           ) : groupMode === 'host' ? (
-            groups.map(([host, items]) => (
-              <HostGroup key={host} host={host} items={items} sub={subIndex.get(host)}
-                scopeBadge={hasScope ? scopeStatus(host) : null}
-                {...{ checked, toggleCheck, copyVal, toggleTag, setDetail }} />
-            ))
+            <>
+              {groups.slice(0, 300).map(([host, items]) => (
+                <HostGroup key={host} host={host} items={items} sub={subIndex.get(host)}
+                  scopeBadge={hasScope ? scopeStatus(host) : null}
+                  {...{ checked, toggleCheck, copyVal, toggleTag, setDetail }} />
+              ))}
+              {groups.length > 300 && (
+                <div className="glass-card empty-state"><div className="empty-sub">Showing 300 of {groups.length.toLocaleString()} host groups — narrow with search/filters, or use the flat table.</div></div>
+              )}
+            </>
           ) : groupMode === 'cat' ? (
             groups.map(([cat, items]) => (
               <div key={cat} className="port-group">
@@ -349,50 +355,53 @@ function HostGroup({ host, items, sub, scopeBadge, checked, toggleCheck, copyVal
 
 function PortTable({ rows, checked, toggleCheck, onSort, sort, copyVal, toggleTag, setAudit, setDetail }) {
   const sortArrow = (key) => (sort.key === key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '');
-  return (
-    <div className="vtable">
-      <div className="vtable-scroll">
-        <div className="vtable-inner" style={{ minWidth: 880 }}>
-          <div className="vtable-head-sticky">
-            <div className="port-row port-row-head">
-              <span className="pc-cb" />
-              <span className="pc-sev sortable" onClick={() => onSort('severity')}>Sev{sortArrow('severity')}</span>
-              <span className="pc-host sortable" onClick={() => onSort('host')}>Host{sortArrow('host')}</span>
-              <span className="pc-port sortable" onClick={() => onSort('port')}>Port{sortArrow('port')}</span>
-              <span className="pc-svc">Service / Version</span>
-              <span className="pc-tags">Findings</span>
-              <span className="pc-act" />
-            </div>
-          </div>
-          {rows.map(({ r, e }) => (
-            <div key={r.id} className={`port-row${e.dangerousFlags.length ? ' row-danger' : ''}`} onClick={() => setDetail(r)}>
-              <span className="pc-cb" onClick={(ev) => ev.stopPropagation()}>
-                <input type="checkbox" className="row-cb" checked={checked.has(r.id)} onChange={() => toggleCheck(r.id)} />
-              </span>
-              <span className="pc-sev"><span className={`sev-pill sev-${e.severity}`}>{e.severity}</span></span>
-              <span className="pc-host mono" title={r.ip || ''}>
-                {r.tag && <span className="star">★</span>}{r.host}
-              </span>
-              <span className="pc-port mono">{r.port}/{r.proto}
-                {!r.state.startsWith('open') && <span className="state-tag"> {r.state}</span>}
-              </span>
-              <span className="pc-svc">{[r.service, r.product, r.version].filter(Boolean).join(' ') || '—'}</span>
-              <span className="pc-tags">
-                {r.kev && <span className="mini-tag kev">🔥 KEV</span>}
-                {r.cves && r.cves.length > 0 && <span className="mini-tag cve">{r.cves.length} CVE</span>}
-                {e.exploits.length > 0 && <span className="mini-tag exp">exploit</span>}
-                {e.dangerousFlags.length > 0 && <span className="mini-tag danger">misconfig</span>}
-                {e.anomalies.length > 0 && <span className="mini-tag anom">anomaly</span>}
-              </span>
-              <span className="pc-act" onClick={(ev) => ev.stopPropagation()}>
-                <button className="icon-btn" title="Copy host:port" onClick={() => copyVal(`${r.host}:${r.port}`)}>⧉</button>
-                <button className="icon-btn" title="Flag" onClick={() => toggleTag(r.id)}>{r.tag ? '★' : '☆'}</button>
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+  const header = (
+    <div className="port-row port-row-head">
+      <span className="pc-cb" />
+      <span className="pc-sev sortable" onClick={() => onSort('severity')}>Sev{sortArrow('severity')}</span>
+      <span className="pc-host sortable" onClick={() => onSort('host')}>Host{sortArrow('host')}</span>
+      <span className="pc-port sortable" onClick={() => onSort('port')}>Port{sortArrow('port')}</span>
+      <span className="pc-svc">Service / Version</span>
+      <span className="pc-tags">Findings</span>
+      <span className="pc-act" />
     </div>
+  );
+  // Windowed: only rows near the viewport render, so 50k ports don't create 50k
+  // DOM nodes (that was a 25-37s freeze / "page unresponsive").
+  return (
+    <VirtualTable
+      items={rows}
+      rowHeight={34}
+      minWidth={880}
+      header={header}
+      getKey={({ r }) => r.id}
+      renderRow={({ r, e }) => (
+        <div className={`port-row${e.dangerousFlags.length ? ' row-danger' : ''}`} onClick={() => setDetail(r)}>
+          <span className="pc-cb" onClick={(ev) => ev.stopPropagation()}>
+            <input type="checkbox" className="row-cb" checked={checked.has(r.id)} onChange={() => toggleCheck(r.id)} />
+          </span>
+          <span className="pc-sev"><span className={`sev-pill sev-${e.severity}`}>{e.severity}</span></span>
+          <span className="pc-host mono" title={r.ip || ''}>
+            {r.tag && <span className="star">★</span>}{r.host}
+          </span>
+          <span className="pc-port mono">{r.port}/{r.proto}
+            {!r.state.startsWith('open') && <span className="state-tag"> {r.state}</span>}
+          </span>
+          <span className="pc-svc">{[r.service, r.product, r.version].filter(Boolean).join(' ') || '—'}</span>
+          <span className="pc-tags">
+            {r.kev && <span className="mini-tag kev">🔥 KEV</span>}
+            {r.cves && r.cves.length > 0 && <span className="mini-tag cve">{r.cves.length} CVE</span>}
+            {e.exploits.length > 0 && <span className="mini-tag exp">exploit</span>}
+            {e.dangerousFlags.length > 0 && <span className="mini-tag danger">misconfig</span>}
+            {e.anomalies.length > 0 && <span className="mini-tag anom">anomaly</span>}
+          </span>
+          <span className="pc-act" onClick={(ev) => ev.stopPropagation()}>
+            <button className="icon-btn" title="Copy host:port" onClick={() => copyVal(`${r.host}:${r.port}`)}>⧉</button>
+            <button className="icon-btn" title="Flag" onClick={() => toggleTag(r.id)}>{r.tag ? '★' : '☆'}</button>
+          </span>
+        </div>
+      )}
+    />
   );
 }
 
